@@ -6,7 +6,7 @@
     "Firebase <operations@firebase.com>"
   ],
   "description": "Firebase Web Client",
-  "main": "lib/firebase.js",
+  "main": "firebase.js",
   "keywords": [
     "Firebase",
     "synchronization",
