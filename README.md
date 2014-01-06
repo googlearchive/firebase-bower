@@ -1,1 +1,4 @@
-Firebase javascript libraries.
+firebase-bower
+==============
+
+Firebase Bower
