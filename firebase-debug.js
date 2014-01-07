@@ -5208,16 +5208,11 @@ fb.realtime.TransportManager = function() {
 fb.realtime.TransportManager.ALL_TRANSPORTS = [fb.realtime.BrowserPollConnection, fb.realtime.HttpPollConnection, fb.realtime.WebSocketConnection];
 fb.realtime.TransportManager.prototype.initTransports_ = function() {
   var transports = [];
-  var skipPollConnection = fb.realtime.WebSocketConnection && fb.realtime.WebSocketConnection["isAvailable"]();
-  if(skipPollConnection) {
-    transports.push(fb.realtime.WebSocketConnection)
-  }else {
-    fb.core.util.each(fb.realtime.TransportManager.ALL_TRANSPORTS, function(i, transport) {
-      if(transport && transport["isAvailable"]()) {
-        transports.push(transport)
-      }
-    })
-  }
+  fb.core.util.each(fb.realtime.TransportManager.ALL_TRANSPORTS, function(i, transport) {
+    if(transport && transport["isAvailable"]()) {
+      transports.push(transport)
+    }
+  });
   this.transports_ = transports
 };
 fb.realtime.TransportManager.prototype.initialTransport = function() {
