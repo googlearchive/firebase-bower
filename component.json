@@ -1,0 +1,14 @@
+{
+  "name": "firebase",
+  "version": "1.0.2",
+  "description": "Firebase Web Client",
+  "main": "firebase.js",
+  "scripts": ["firebase.js"],
+  "keywords": [
+    "Firebase",
+    "synchronization",
+    "real-time",
+    "websocket"
+  ],
+  "license": "MIT"
+}
