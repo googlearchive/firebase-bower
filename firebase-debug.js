@@ -2033,6 +2033,236 @@ fb.LLRBEmptyNode.prototype.isRed_ = function() {
   return false
 };
 fb.core.util.SortedMap.EMPTY_NODE_ = new fb.LLRBEmptyNode;
+goog.provide("fb.core.storage.DOMStorageWrapper");
+goog.require("fb.util.obj");
+goog.scope(function() {
+  fb.core.storage.DOMStorageWrapper = function(domStorage) {
+    this.domStorage_ = domStorage;
+    this.prefix_ = "firebase:"
+  };
+  var DOMStorageWrapper = fb.core.storage.DOMStorageWrapper;
+  DOMStorageWrapper.prototype.set = function(key, value) {
+    if(value == null) {
+      this.domStorage_.removeItem(this.prefixedName_(key))
+    }else {
+      this.domStorage_.setItem(this.prefixedName_(key), fb.util.json.stringify(value))
+    }
+  };
+  DOMStorageWrapper.prototype.get = function(key) {
+    var storedVal = this.domStorage_.getItem(this.prefixedName_(key));
+    if(storedVal == null) {
+      return null
+    }else {
+      return fb.util.json.eval(storedVal)
+    }
+  };
+  DOMStorageWrapper.prototype.remove = function(key) {
+    this.domStorage_.removeItem(this.prefixedName_(key))
+  };
+  DOMStorageWrapper.prototype.prefixedName_ = function(name) {
+    return this.prefix_ + name
+  }
+});
+goog.provide("fb.core.storage.MemoryStorage");
+goog.require("fb.util.obj");
+goog.scope(function() {
+  var obj = fb.util.obj;
+  fb.core.storage.MemoryStorage = function() {
+    this.cache_ = {}
+  };
+  var MemoryStorage = fb.core.storage.MemoryStorage;
+  MemoryStorage.prototype.set = function(key, value) {
+    if(value == null) {
+      delete this.cache_[key]
+    }else {
+      this.cache_[key] = value
+    }
+  };
+  MemoryStorage.prototype.get = function(key) {
+    if(obj.contains(this.cache_, key)) {
+      return this.cache_[key]
+    }
+    return null
+  };
+  MemoryStorage.prototype.remove = function(key) {
+    delete this.cache_[key]
+  }
+});
+goog.provide("fb.core.storage");
+goog.require("fb.core.storage.DOMStorageWrapper");
+goog.require("fb.core.storage.MemoryStorage");
+fb.core.storage.createStoragefor = function(domStorage) {
+  try {
+    if(domStorage) {
+      domStorage.setItem("firebase:sentinel", "cache");
+      domStorage.removeItem("firebase:sentinel");
+      return new fb.core.storage.DOMStorageWrapper(domStorage)
+    }
+  }catch(e) {
+  }
+  return new fb.core.storage.MemoryStorage
+};
+fb.core.storage.PersistentStorage = fb.core.storage.createStoragefor(typeof localStorage !== "undefined" ? localStorage : null);
+fb.core.storage.SessionStorage = fb.core.storage.createStoragefor(typeof sessionStorage !== "undefined" ? sessionStorage : null);
+goog.provide("fb.core.RepoInfo");
+goog.require("fb.core.storage");
+fb.core.RepoInfo = function(host, secure, namespace, internalHost) {
+  this.host = host.toLowerCase();
+  this.domain = this.host.substr(this.host.indexOf(".") + 1);
+  this.secure = secure;
+  this.namespace = namespace;
+  this.internalHost = internalHost || fb.core.storage.PersistentStorage.get("host:" + host) || this.host
+};
+fb.core.RepoInfo.prototype.needsQueryParam = function() {
+  return this.host !== this.internalHost
+};
+fb.core.RepoInfo.prototype.isCacheableHost = function() {
+  return this.internalHost.substr(0, 2) === "s-"
+};
+fb.core.RepoInfo.prototype.isDemoHost = function() {
+  return this.domain === "firebaseio-demo.com"
+};
+fb.core.RepoInfo.prototype.updateHost = function(newHost) {
+  if(newHost !== this.internalHost) {
+    this.internalHost = newHost;
+    if(this.isCacheableHost()) {
+      fb.core.storage.PersistentStorage.set("host:" + this.host, this.internalHost)
+    }
+  }
+};
+fb.core.RepoInfo.prototype.toString = function() {
+  return(this.secure ? "https://" : "http://") + this.host
+};
+goog.provide("fb.constants");
+var NODE_CLIENT = false;
+goog.provide("goog.crypt.Hash");
+goog.crypt.Hash = function() {
+};
+goog.crypt.Hash.prototype.reset = goog.abstractMethod;
+goog.crypt.Hash.prototype.update = goog.abstractMethod;
+goog.crypt.Hash.prototype.digest = goog.abstractMethod;
+goog.provide("goog.crypt.Sha1");
+goog.require("goog.crypt.Hash");
+goog.crypt.Sha1 = function() {
+  goog.base(this);
+  this.chain_ = [];
+  this.buf_ = [];
+  this.W_ = [];
+  this.pad_ = [];
+  this.pad_[0] = 128;
+  for(var i = 1;i < 64;++i) {
+    this.pad_[i] = 0
+  }
+  this.reset()
+};
+goog.inherits(goog.crypt.Sha1, goog.crypt.Hash);
+goog.crypt.Sha1.prototype.reset = function() {
+  this.chain_[0] = 1732584193;
+  this.chain_[1] = 4023233417;
+  this.chain_[2] = 2562383102;
+  this.chain_[3] = 271733878;
+  this.chain_[4] = 3285377520;
+  this.inbuf_ = 0;
+  this.total_ = 0
+};
+goog.crypt.Sha1.prototype.compress_ = function(buf, opt_offset) {
+  if(!opt_offset) {
+    opt_offset = 0
+  }
+  var W = this.W_;
+  for(var i = opt_offset;i < opt_offset + 64;i += 4) {
+    var w = buf[i] << 24 | buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3];
+    W[i / 4] = w
+  }
+  for(var i = 16;i < 80;i++) {
+    var t = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
+    W[i] = (t << 1 | t >>> 31) & 4294967295
+  }
+  var a = this.chain_[0];
+  var b = this.chain_[1];
+  var c = this.chain_[2];
+  var d = this.chain_[3];
+  var e = this.chain_[4];
+  var f, k;
+  for(var i = 0;i < 80;i++) {
+    if(i < 40) {
+      if(i < 20) {
+        f = d ^ b & (c ^ d);
+        k = 1518500249
+      }else {
+        f = b ^ c ^ d;
+        k = 1859775393
+      }
+    }else {
+      if(i < 60) {
+        f = b & c | d & (b | c);
+        k = 2400959708
+      }else {
+        f = b ^ c ^ d;
+        k = 3395469782
+      }
+    }
+    var t = (a << 5 | a >>> 27) + f + e + k + W[i] & 4294967295;
+    e = d;
+    d = c;
+    c = (b << 30 | b >>> 2) & 4294967295;
+    b = a;
+    a = t
+  }
+  this.chain_[0] = this.chain_[0] + a & 4294967295;
+  this.chain_[1] = this.chain_[1] + b & 4294967295;
+  this.chain_[2] = this.chain_[2] + c & 4294967295;
+  this.chain_[3] = this.chain_[3] + d & 4294967295;
+  this.chain_[4] = this.chain_[4] + e & 4294967295
+};
+goog.crypt.Sha1.prototype.update = function(bytes, opt_length) {
+  if(!goog.isDef(opt_length)) {
+    opt_length = bytes.length
+  }
+  var buf = this.buf_;
+  var inbuf = this.inbuf_;
+  var n = 0;
+  if(goog.isString(bytes)) {
+    while(n < opt_length) {
+      buf[inbuf++] = bytes.charCodeAt(n++);
+      if(inbuf == 64) {
+        this.compress_(buf);
+        inbuf = 0
+      }
+    }
+  }else {
+    while(n < opt_length) {
+      buf[inbuf++] = bytes[n++];
+      if(inbuf == 64) {
+        this.compress_(buf);
+        inbuf = 0
+      }
+    }
+  }
+  this.inbuf_ = inbuf;
+  this.total_ += opt_length
+};
+goog.crypt.Sha1.prototype.digest = function() {
+  var digest = [];
+  var totalBits = this.total_ * 8;
+  if(this.inbuf_ < 56) {
+    this.update(this.pad_, 56 - this.inbuf_)
+  }else {
+    this.update(this.pad_, 64 - (this.inbuf_ - 56))
+  }
+  for(var i = 63;i >= 56;i--) {
+    this.buf_[i] = totalBits & 255;
+    totalBits /= 256
+  }
+  this.compress_(this.buf_);
+  var n = 0;
+  for(var i = 0;i < 5;i++) {
+    for(var j = 24;j >= 0;j -= 8) {
+      digest[n++] = this.chain_[i] >> j & 255
+    }
+  }
+  return digest
+};
 goog.provide("goog.debug.Error");
 goog.debug.Error = function(opt_msg) {
   if(Error.captureStackTrace) {
@@ -2659,209 +2889,6 @@ goog.crypt.utf8ByteArrayToString = function(bytes) {
   }
   return out.join("")
 };
-goog.provide("goog.crypt.Hash");
-goog.crypt.Hash = function() {
-};
-goog.crypt.Hash.prototype.reset = goog.abstractMethod;
-goog.crypt.Hash.prototype.update = goog.abstractMethod;
-goog.crypt.Hash.prototype.digest = goog.abstractMethod;
-goog.provide("goog.crypt.Sha1");
-goog.require("goog.crypt.Hash");
-goog.crypt.Sha1 = function() {
-  goog.base(this);
-  this.chain_ = [];
-  this.buf_ = [];
-  this.W_ = [];
-  this.pad_ = [];
-  this.pad_[0] = 128;
-  for(var i = 1;i < 64;++i) {
-    this.pad_[i] = 0
-  }
-  this.reset()
-};
-goog.inherits(goog.crypt.Sha1, goog.crypt.Hash);
-goog.crypt.Sha1.prototype.reset = function() {
-  this.chain_[0] = 1732584193;
-  this.chain_[1] = 4023233417;
-  this.chain_[2] = 2562383102;
-  this.chain_[3] = 271733878;
-  this.chain_[4] = 3285377520;
-  this.inbuf_ = 0;
-  this.total_ = 0
-};
-goog.crypt.Sha1.prototype.compress_ = function(buf, opt_offset) {
-  if(!opt_offset) {
-    opt_offset = 0
-  }
-  var W = this.W_;
-  for(var i = opt_offset;i < opt_offset + 64;i += 4) {
-    var w = buf[i] << 24 | buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3];
-    W[i / 4] = w
-  }
-  for(var i = 16;i < 80;i++) {
-    var t = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
-    W[i] = (t << 1 | t >>> 31) & 4294967295
-  }
-  var a = this.chain_[0];
-  var b = this.chain_[1];
-  var c = this.chain_[2];
-  var d = this.chain_[3];
-  var e = this.chain_[4];
-  var f, k;
-  for(var i = 0;i < 80;i++) {
-    if(i < 40) {
-      if(i < 20) {
-        f = d ^ b & (c ^ d);
-        k = 1518500249
-      }else {
-        f = b ^ c ^ d;
-        k = 1859775393
-      }
-    }else {
-      if(i < 60) {
-        f = b & c | d & (b | c);
-        k = 2400959708
-      }else {
-        f = b ^ c ^ d;
-        k = 3395469782
-      }
-    }
-    var t = (a << 5 | a >>> 27) + f + e + k + W[i] & 4294967295;
-    e = d;
-    d = c;
-    c = (b << 30 | b >>> 2) & 4294967295;
-    b = a;
-    a = t
-  }
-  this.chain_[0] = this.chain_[0] + a & 4294967295;
-  this.chain_[1] = this.chain_[1] + b & 4294967295;
-  this.chain_[2] = this.chain_[2] + c & 4294967295;
-  this.chain_[3] = this.chain_[3] + d & 4294967295;
-  this.chain_[4] = this.chain_[4] + e & 4294967295
-};
-goog.crypt.Sha1.prototype.update = function(bytes, opt_length) {
-  if(!goog.isDef(opt_length)) {
-    opt_length = bytes.length
-  }
-  var buf = this.buf_;
-  var inbuf = this.inbuf_;
-  var n = 0;
-  if(goog.isString(bytes)) {
-    while(n < opt_length) {
-      buf[inbuf++] = bytes.charCodeAt(n++);
-      if(inbuf == 64) {
-        this.compress_(buf);
-        inbuf = 0
-      }
-    }
-  }else {
-    while(n < opt_length) {
-      buf[inbuf++] = bytes[n++];
-      if(inbuf == 64) {
-        this.compress_(buf);
-        inbuf = 0
-      }
-    }
-  }
-  this.inbuf_ = inbuf;
-  this.total_ += opt_length
-};
-goog.crypt.Sha1.prototype.digest = function() {
-  var digest = [];
-  var totalBits = this.total_ * 8;
-  if(this.inbuf_ < 56) {
-    this.update(this.pad_, 56 - this.inbuf_)
-  }else {
-    this.update(this.pad_, 64 - (this.inbuf_ - 56))
-  }
-  for(var i = 63;i >= 56;i--) {
-    this.buf_[i] = totalBits & 255;
-    totalBits /= 256
-  }
-  this.compress_(this.buf_);
-  var n = 0;
-  for(var i = 0;i < 5;i++) {
-    for(var j = 24;j >= 0;j -= 8) {
-      digest[n++] = this.chain_[i] >> j & 255
-    }
-  }
-  return digest
-};
-goog.provide("fb.core.util.cache");
-goog.require("fb.util.obj");
-var DummyCache = function() {
-  this.cache_ = {};
-  this.length = 0
-};
-DummyCache.prototype.setItem = function(key, value) {
-  if(!fb.util.obj.contains(this.cache_, key)) {
-    this.length += 1
-  }
-  this.cache_[key] = value
-};
-DummyCache.prototype.getItem = function(key) {
-  if(fb.util.obj.contains(this.cache_, key)) {
-    return this.cache_[key]
-  }
-  return null
-};
-DummyCache.prototype.removeItem = function(key) {
-  if(fb.util.obj.contains(this.cache_, key)) {
-    this.length -= 1;
-    delete this.cache_[key]
-  }
-};
-fb.cache_ = null;
-try {
-  if(typeof sessionStorage !== "undefined") {
-    sessionStorage.setItem("firebase-sentinel", "cache");
-    sessionStorage.removeItem("firebase-sentinel");
-    fb.cache_ = sessionStorage
-  }
-}catch(e) {
-}
-fb.cache_ = fb.cache_ || new DummyCache;
-fb.core.util.cache.set = function(key, value) {
-  fb.cache_.setItem(key, value)
-};
-fb.core.util.cache.get = function(key) {
-  return fb.cache_.getItem(key)
-};
-fb.core.util.cache.remove = function(key) {
-  fb.cache_.removeItem(key)
-};
-fb.core.util.cache.length = function() {
-  return fb.cache_.length
-};
-goog.provide("fb.core.RepoInfo");
-goog.require("fb.core.util.cache");
-fb.core.RepoInfo = function(host, secure, namespace, internalHost) {
-  this.host = host.toLowerCase();
-  this.domain = this.host.substr(this.host.indexOf(".") + 1);
-  this.secure = secure;
-  this.namespace = namespace;
-  this.internalHost = internalHost || fb.core.util.cache.get(host) || this.host
-};
-fb.core.RepoInfo.prototype.needsQueryParam = function() {
-  return this.host !== this.internalHost
-};
-fb.core.RepoInfo.prototype.isCacheableHost = function() {
-  return this.internalHost.substr(0, 2) === "s-"
-};
-fb.core.RepoInfo.prototype.isDemoHost = function() {
-  return this.domain === "firebaseio-demo.com"
-};
-fb.core.RepoInfo.prototype.updateHost = function(newHost) {
-  if(newHost !== this.internalHost) {
-    this.internalHost = newHost;
-    if(this.isCacheableHost()) {
-      fb.core.util.cache.set(this.host, this.internalHost)
-    }
-  }
-};
-fb.core.RepoInfo.prototype.toString = function() {
-  return(this.secure ? "https://" : "http://") + this.host
-};
 goog.provide("goog.userAgent");
 goog.require("goog.string");
 goog.userAgent.ASSUME_IE = false;
@@ -3067,11 +3094,13 @@ goog.crypt.base64.init_ = function() {
   }
 };
 goog.provide("fb.core.util");
+goog.require("fb.core.storage");
+goog.require("fb.core.RepoInfo");
+goog.require("fb.constants");
+goog.require("fb.util.json");
 goog.require("goog.crypt");
 goog.require("goog.crypt.base64");
 goog.require("goog.crypt.Sha1");
-goog.require("fb.core.RepoInfo");
-goog.require("fb.util.json");
 fb.core.util.LUIDGenerator = function() {
   var id = 1;
   return function() {
@@ -3092,6 +3121,20 @@ fb.core.util.base64Encode = function(str) {
   var utf8Bytes = fb.util.utf8.stringToByteArray(str);
   var base64String = goog.crypt.base64.encodeByteArray(utf8Bytes, true);
   return base64String
+};
+fb.core.util.base64DecodeIfNativeSupport = function(str) {
+  try {
+    if(NODE_CLIENT) {
+      return(new Buffer(str, "base64")).toString("utf8")
+    }else {
+      if(typeof atob !== "undefined") {
+        return atob(str)
+      }
+    }
+  }catch(e) {
+    fb.core.util.log("base64DecodeIfNativeSupport failed: ", e)
+  }
+  return null
 };
 fb.core.util.sha1 = function(str) {
   var utf8Bytes = fb.util.utf8.stringToByteArray(str);
@@ -3121,7 +3164,7 @@ fb.core.util.firstLog_ = true;
 fb.core.util.log = function() {
   if(fb.core.util.firstLog_ === true) {
     fb.core.util.firstLog_ = false;
-    if(fb.core.util.logger === null && fb.core.util.cache.get("logging_enabled") === "true") {
+    if(fb.core.util.logger === null && fb.core.storage.SessionStorage.get("logging_enabled") === true) {
       Firebase.enableLogging(true)
     }
   }
@@ -4025,8 +4068,6 @@ fb.realtime.Transport.prototype.close = function() {
 };
 fb.realtime.Transport.prototype.send = function(data) {
 };
-goog.provide("fb.constants");
-var NODE_CLIENT = false;
 goog.provide("fb.realtime.polling.PacketReceiver");
 fb.realtime.polling.PacketReceiver = function(onMessage) {
   this.onMessage_ = onMessage;
@@ -4596,176 +4637,7 @@ if(NODE_CLIENT) {
     return false
   }
 }
-;goog.provide("fb.realtime.WebSocketConnection");
-goog.require("fb.util.json");
-goog.require("fb.constants");
-goog.require("fb.core.util");
-goog.require("fb.realtime.Constants");
-goog.require("fb.realtime.Transport");
-goog.require("fb.core.stats.StatsManager");
-var WEBSOCKET_MAX_FRAME_SIZE = 16384;
-var WEBSOCKET_KEEPALIVE_INTERVAL = 45E3;
-fb.WebSocket = null;
-if(NODE_CLIENT) {
-  fb.WebSocket = require("faye-websocket")["Client"]
-}else {
-  if(typeof MozWebSocket !== "undefined") {
-    fb.WebSocket = MozWebSocket
-  }else {
-    if(typeof WebSocket !== "undefined") {
-      fb.WebSocket = WebSocket
-    }
-  }
-}
-fb.realtime.WebSocketConnection = function(connId, repoInfo, sessionId) {
-  this.connId = connId;
-  this.log_ = fb.core.util.logWrapper(this.connId);
-  this.keepaliveTimer = null;
-  this.frames = null;
-  this.totalFrames = 0;
-  this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
-  this.connURL = (repoInfo.secure ? "wss://" : "ws://") + repoInfo.internalHost + "/.ws?" + fb.realtime.Constants.VERSION_PARAM + "=" + fb.realtime.Constants.PROTOCOL_VERSION;
-  if(repoInfo.needsQueryParam()) {
-    this.connURL = this.connURL + "&ns=" + repoInfo.namespace
-  }
-  if(sessionId) {
-    this.connURL = this.connURL + "&" + fb.realtime.Constants.SESSION_PARAM + "=" + sessionId
-  }
-};
-fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
-  this.onDisconnect = onDisconn;
-  this.onMessage = onMess;
-  this.log_("websocket connecting to " + this.connURL);
-  this.mySock = new fb.WebSocket(this.connURL);
-  this.everConnected_ = false;
-  var self = this;
-  this.mySock.onopen = function() {
-    self.log_("Websocket connected.");
-    self.everConnected_ = true
-  };
-  this.mySock.onclose = function() {
-    self.log_("Websocket connection was disconnected.");
-    self.mySock = null;
-    self.onClosed_()
-  };
-  this.mySock.onmessage = function(m) {
-    self.handleIncomingFrame(m)
-  };
-  this.mySock.onerror = function(e) {
-    self.log_("WebSocket error.  Closing connection.");
-    if(e.data) {
-      self.log_(e.data)
-    }
-    self.onClosed_()
-  }
-};
-fb.realtime.WebSocketConnection.prototype.start = function() {
-};
-fb.realtime.WebSocketConnection.forceDisallow = function() {
-  fb.realtime.WebSocketConnection.forceDisallow_ = true
-};
-fb.realtime.WebSocketConnection["isAvailable"] = function() {
-  var isOldAndroid = false;
-  if(typeof navigator !== "undefined" && navigator.userAgent) {
-    var oldAndroidRegex = /Android ([0-9]{0,}\.[0-9]{0,})/;
-    var oldAndroidMatch = navigator.userAgent.match(oldAndroidRegex);
-    if(oldAndroidMatch && oldAndroidMatch.length > 1) {
-      if(parseFloat(oldAndroidMatch[1]) < 4.4) {
-        isOldAndroid = true
-      }
-    }
-  }
-  return!isOldAndroid && fb.WebSocket !== null && !fb.realtime.WebSocketConnection.forceDisallow_
-};
-fb.realtime.WebSocketConnection.prototype.appendFrame_ = function(data) {
-  this.frames.push(data);
-  if(this.frames.length == this.totalFrames) {
-    var fullMess = this.frames.join("");
-    this.frames = null;
-    var jsonMess = fb.util.json.eval(fullMess);
-    this.onMessage(jsonMess)
-  }
-};
-fb.realtime.WebSocketConnection.prototype.handleNewFrameCount_ = function(frameCount) {
-  this.totalFrames = frameCount;
-  this.frames = []
-};
-fb.realtime.WebSocketConnection.prototype.extractFrameCount_ = function(data) {
-  fb.core.util.assert(this.frames === null, "We already have a frame buffer");
-  if(data.length <= 6) {
-    var frameCount = Number(data);
-    if(!isNaN(frameCount)) {
-      this.handleNewFrameCount_(frameCount);
-      return null
-    }
-  }
-  this.handleNewFrameCount_(1);
-  return data
-};
-fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
-  if(this.mySock === null) {
-    return
-  }
-  var data = mess["data"];
-  this.stats_.incrementCounter("bytes_received", data.length);
-  this.resetKeepAlive();
-  if(this.frames !== null) {
-    this.appendFrame_(data)
-  }else {
-    var remainingData = this.extractFrameCount_(data);
-    if(remainingData !== null) {
-      this.appendFrame_(remainingData)
-    }
-  }
-};
-fb.realtime.WebSocketConnection.prototype.send = function(data) {
-  this.resetKeepAlive();
-  data = fb.util.json.stringify(data, false);
-  this.stats_.incrementCounter("bytes_sent", data.length);
-  var dataSegs = fb.core.util.splitStringBySize(data, WEBSOCKET_MAX_FRAME_SIZE);
-  if(dataSegs.length > 1) {
-    this.mySock.send(String(dataSegs.length))
-  }
-  for(var i = 0;i < dataSegs.length;i++) {
-    this.mySock.send(dataSegs[i])
-  }
-};
-fb.realtime.WebSocketConnection.prototype.shutdown_ = function() {
-  this.isClosed_ = true;
-  if(this.keepaliveTimer) {
-    clearInterval(this.keepaliveTimer);
-    this.keepaliveTimer = null
-  }
-  if(this.mySock) {
-    this.mySock.close();
-    this.mySock = null
-  }
-};
-fb.realtime.WebSocketConnection.prototype.onClosed_ = function() {
-  if(!this.isClosed_) {
-    this.log_("WebSocket is closing itself");
-    this.shutdown_();
-    if(this.onDisconnect) {
-      this.onDisconnect(this.everConnected_);
-      this.onDisconnect = null
-    }
-  }
-};
-fb.realtime.WebSocketConnection.prototype.close = function() {
-  if(!this.isClosed_) {
-    this.log_("WebSocket is being closed");
-    this.shutdown_()
-  }
-};
-fb.realtime.WebSocketConnection.prototype.resetKeepAlive = function() {
-  var self = this;
-  clearInterval(this.keepaliveTimer);
-  this.keepaliveTimer = setInterval(function() {
-    self.mySock.send("0");
-    self.resetKeepAlive()
-  }, WEBSOCKET_KEEPALIVE_INTERVAL)
-};
-goog.provide("fb.core.util.CountedSet");
+;goog.provide("fb.core.util.CountedSet");
 goog.require("fb.core.util");
 goog.require("goog.object");
 fb.core.util.CountedSet = function() {
@@ -5194,10 +5066,294 @@ if(typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
     document(this.commandCB, this.onMessageCB)
   }
 }
-;goog.provide("fb.realtime.TransportManager");
+;goog.provide("fb.core.util.NodePatches");
+(function() {
+  if(NODE_CLIENT) {
+    var version = process.version;
+    if(version === "v0.10.22" || version === "v0.10.23" || version === "v0.10.24") {
+      var Writable = require("_stream_writable");
+      Writable.prototype.write = function(chunk, encoding, cb) {
+        var state = this._writableState;
+        var ret = false;
+        if(typeof encoding === "function") {
+          cb = encoding;
+          encoding = null
+        }
+        if(Buffer.isBuffer(chunk)) {
+          encoding = "buffer"
+        }else {
+          if(!encoding) {
+            encoding = state.defaultEncoding
+          }
+        }
+        if(typeof cb !== "function") {
+          cb = function() {
+          }
+        }
+        if(state.ended) {
+          writeAfterEnd(this, state, cb)
+        }else {
+          if(validChunk(this, state, chunk, cb)) {
+            ret = writeOrBuffer(this, state, chunk, encoding, cb)
+          }
+        }
+        return ret
+      };
+      function writeAfterEnd(stream, state, cb) {
+        var er = new Error("write after end");
+        stream.emit("error", er);
+        process.nextTick(function() {
+          cb(er)
+        })
+      }
+      function validChunk(stream, state, chunk, cb) {
+        var valid = true;
+        if(!Buffer.isBuffer(chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state.objectMode) {
+          var er = new TypeError("Invalid non-string/buffer chunk");
+          stream.emit("error", er);
+          process.nextTick(function() {
+            cb(er)
+          });
+          valid = false
+        }
+        return valid
+      }
+      function writeOrBuffer(stream, state, chunk, encoding, cb) {
+        chunk = decodeChunk(state, chunk, encoding);
+        if(Buffer.isBuffer(chunk)) {
+          encoding = "buffer"
+        }
+        var len = state.objectMode ? 1 : chunk.length;
+        state.length += len;
+        var ret = state.length < state.highWaterMark;
+        if(!ret) {
+          state.needDrain = true
+        }
+        if(state.writing) {
+          state.buffer.push(new WriteReq(chunk, encoding, cb))
+        }else {
+          doWrite(stream, state, len, chunk, encoding, cb)
+        }
+        return ret
+      }
+      function decodeChunk(state, chunk, encoding) {
+        if(!state.objectMode && state.decodeStrings !== false && typeof chunk === "string") {
+          chunk = new Buffer(chunk, encoding)
+        }
+        return chunk
+      }
+      function WriteReq(chunk, encoding, cb) {
+        this.chunk = chunk;
+        this.encoding = encoding;
+        this.callback = cb
+      }
+      function doWrite(stream, state, len, chunk, encoding, cb) {
+        state.writelen = len;
+        state.writecb = cb;
+        state.writing = true;
+        state.sync = true;
+        stream._write(chunk, encoding, state.onwrite);
+        state.sync = false
+      }
+      var Duplex = require("_stream_duplex");
+      Duplex.prototype.write = Writable.prototype.write
+    }
+  }
+})();
+goog.provide("fb.realtime.WebSocketConnection");
+goog.require("fb.util.json");
+goog.require("fb.constants");
+goog.require("fb.core.util");
+goog.require("fb.realtime.Constants");
+goog.require("fb.realtime.Transport");
+goog.require("fb.core.storage");
+goog.require("fb.core.stats.StatsManager");
+var WEBSOCKET_MAX_FRAME_SIZE = 16384;
+var WEBSOCKET_KEEPALIVE_INTERVAL = 45E3;
+var WEBSOCKET_CONNECT_TIMEOUT = 3E4;
+fb.WebSocket = null;
+if(NODE_CLIENT) {
+  goog.require("fb.core.util.NodePatches");
+  fb.WebSocket = require("faye-websocket")["Client"]
+}else {
+  if(typeof MozWebSocket !== "undefined") {
+    fb.WebSocket = MozWebSocket
+  }else {
+    if(typeof WebSocket !== "undefined") {
+      fb.WebSocket = WebSocket
+    }
+  }
+}
+fb.realtime.WebSocketConnection = function(connId, repoInfo, sessionId) {
+  this.connId = connId;
+  this.log_ = fb.core.util.logWrapper(this.connId);
+  this.keepaliveTimer = null;
+  this.frames = null;
+  this.totalFrames = 0;
+  this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
+  this.connURL = (repoInfo.secure ? "wss://" : "ws://") + repoInfo.internalHost + "/.ws?" + fb.realtime.Constants.VERSION_PARAM + "=" + fb.realtime.Constants.PROTOCOL_VERSION;
+  if(repoInfo.needsQueryParam()) {
+    this.connURL = this.connURL + "&ns=" + repoInfo.namespace
+  }
+  if(sessionId) {
+    this.connURL = this.connURL + "&" + fb.realtime.Constants.SESSION_PARAM + "=" + sessionId
+  }
+};
+fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
+  this.onDisconnect = onDisconn;
+  this.onMessage = onMess;
+  this.log_("Websocket connecting to " + this.connURL);
+  this.mySock = new fb.WebSocket(this.connURL);
+  this.everConnected_ = false;
+  fb.core.storage.PersistentStorage.set("previous_websocket_failure", true);
+  var self = this;
+  this.connectTimeoutTimer_ = setTimeout(function() {
+    self.log_("Websocket timed out trying to connect.");
+    self.cancelConnectTimer_();
+    self.onClosed_()
+  }, WEBSOCKET_CONNECT_TIMEOUT);
+  this.mySock.onopen = function() {
+    self.log_("Websocket connected.");
+    self.everConnected_ = true;
+    self.cancelConnectTimer_();
+    fb.core.storage.PersistentStorage.remove("previous_websocket_failure")
+  };
+  this.mySock.onclose = function() {
+    self.log_("Websocket connection was disconnected.");
+    self.mySock = null;
+    self.onClosed_()
+  };
+  this.mySock.onmessage = function(m) {
+    self.handleIncomingFrame(m)
+  };
+  this.mySock.onerror = function(e) {
+    self.log_("WebSocket error.  Closing connection.");
+    if(e.data) {
+      self.log_(e.data)
+    }
+    self.onClosed_()
+  }
+};
+fb.realtime.WebSocketConnection.prototype.start = function() {
+};
+fb.realtime.WebSocketConnection.forceDisallow = function() {
+  fb.realtime.WebSocketConnection.forceDisallow_ = true
+};
+fb.realtime.WebSocketConnection["isAvailable"] = function() {
+  var isOldAndroid = false;
+  if(typeof navigator !== "undefined" && navigator.userAgent) {
+    var oldAndroidRegex = /Android ([0-9]{0,}\.[0-9]{0,})/;
+    var oldAndroidMatch = navigator.userAgent.match(oldAndroidRegex);
+    if(oldAndroidMatch && oldAndroidMatch.length > 1) {
+      if(parseFloat(oldAndroidMatch[1]) < 4.4) {
+        isOldAndroid = true
+      }
+    }
+  }
+  return!isOldAndroid && fb.WebSocket !== null && !fb.realtime.WebSocketConnection.forceDisallow_
+};
+fb.realtime.WebSocketConnection.prototype.appendFrame_ = function(data) {
+  this.frames.push(data);
+  if(this.frames.length == this.totalFrames) {
+    var fullMess = this.frames.join("");
+    this.frames = null;
+    var jsonMess = fb.util.json.eval(fullMess);
+    this.onMessage(jsonMess)
+  }
+};
+fb.realtime.WebSocketConnection.prototype.handleNewFrameCount_ = function(frameCount) {
+  this.totalFrames = frameCount;
+  this.frames = []
+};
+fb.realtime.WebSocketConnection.prototype.extractFrameCount_ = function(data) {
+  fb.core.util.assert(this.frames === null, "We already have a frame buffer");
+  if(data.length <= 6) {
+    var frameCount = Number(data);
+    if(!isNaN(frameCount)) {
+      this.handleNewFrameCount_(frameCount);
+      return null
+    }
+  }
+  this.handleNewFrameCount_(1);
+  return data
+};
+fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
+  if(this.mySock === null) {
+    return
+  }
+  var data = mess["data"];
+  this.stats_.incrementCounter("bytes_received", data.length);
+  this.resetKeepAlive();
+  if(this.frames !== null) {
+    this.appendFrame_(data)
+  }else {
+    var remainingData = this.extractFrameCount_(data);
+    if(remainingData !== null) {
+      this.appendFrame_(remainingData)
+    }
+  }
+};
+fb.realtime.WebSocketConnection.prototype.send = function(data) {
+  this.resetKeepAlive();
+  data = fb.util.json.stringify(data, false);
+  this.stats_.incrementCounter("bytes_sent", data.length);
+  var dataSegs = fb.core.util.splitStringBySize(data, WEBSOCKET_MAX_FRAME_SIZE);
+  if(dataSegs.length > 1) {
+    this.mySock.send(String(dataSegs.length))
+  }
+  for(var i = 0;i < dataSegs.length;i++) {
+    this.mySock.send(dataSegs[i])
+  }
+};
+fb.realtime.WebSocketConnection.prototype.shutdown_ = function() {
+  this.isClosed_ = true;
+  this.cancelConnectTimer_();
+  if(this.keepaliveTimer) {
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null
+  }
+  if(this.mySock) {
+    this.mySock.close();
+    this.mySock = null
+  }
+};
+fb.realtime.WebSocketConnection.prototype.onClosed_ = function() {
+  if(!this.isClosed_) {
+    this.log_("WebSocket is closing itself");
+    this.shutdown_();
+    if(this.onDisconnect) {
+      this.onDisconnect(this.everConnected_);
+      this.onDisconnect = null
+    }
+  }
+};
+fb.realtime.WebSocketConnection.prototype.close = function() {
+  if(!this.isClosed_) {
+    this.log_("WebSocket is being closed");
+    this.shutdown_()
+  }
+};
+fb.realtime.WebSocketConnection.prototype.resetKeepAlive = function() {
+  var self = this;
+  clearInterval(this.keepaliveTimer);
+  this.keepaliveTimer = setInterval(function() {
+    if(self.mySock) {
+      self.mySock.send("0")
+    }
+    self.resetKeepAlive()
+  }, WEBSOCKET_KEEPALIVE_INTERVAL)
+};
+fb.realtime.WebSocketConnection.prototype.cancelConnectTimer_ = function() {
+  if(this.connectTimeoutTimer_) {
+    clearTimeout(this.connectTimeoutTimer_);
+    this.connectTimeoutTimer_ = null
+  }
+};
+goog.provide("fb.realtime.TransportManager");
 goog.require("fb.realtime.WebSocketConnection");
 goog.require("fb.constants");
 goog.require("fb.realtime.Transport");
+goog.require("fb.core.storage");
 if(NODE_CLIENT) {
   goog.require("fb.realtime.HttpPollConnection")
 }
@@ -5207,12 +5363,18 @@ fb.realtime.TransportManager = function() {
 };
 fb.realtime.TransportManager.ALL_TRANSPORTS = [fb.realtime.BrowserPollConnection, fb.realtime.HttpPollConnection, fb.realtime.WebSocketConnection];
 fb.realtime.TransportManager.prototype.initTransports_ = function() {
+  var isWebSocketsAvailable = fb.realtime.WebSocketConnection && fb.realtime.WebSocketConnection["isAvailable"]();
+  var isSkipPollConnection = isWebSocketsAvailable && !fb.core.storage.PersistentStorage.get("previous_websocket_failure");
   var transports = [];
-  fb.core.util.each(fb.realtime.TransportManager.ALL_TRANSPORTS, function(i, transport) {
-    if(transport && transport["isAvailable"]()) {
-      transports.push(transport)
-    }
-  });
+  if(isSkipPollConnection) {
+    transports.push(fb.realtime.WebSocketConnection)
+  }else {
+    fb.core.util.each(fb.realtime.TransportManager.ALL_TRANSPORTS, function(i, transport) {
+      if(transport && transport["isAvailable"]()) {
+        transports.push(transport)
+      }
+    })
+  }
   this.transports_ = transports
 };
 fb.realtime.TransportManager.prototype.initialTransport = function() {
@@ -5231,7 +5393,7 @@ fb.realtime.TransportManager.prototype.upgradeTransport = function() {
 };
 goog.provide("fb.realtime.Connection");
 goog.require("fb.realtime.Constants");
-goog.require("fb.core.util.cache");
+goog.require("fb.core.storage");
 goog.require("fb.core.util");
 goog.require("fb.realtime.TransportManager");
 var REALTIME_STATE_CONNECTING = 0;
@@ -5457,7 +5619,7 @@ fb.realtime.Connection.prototype.onConnectionLost_ = function(everConnected) {
   if(!everConnected && this.state_ === REALTIME_STATE_CONNECTING) {
     this.log_("Realtime connection failed.");
     if(this.repoInfo_.isCacheableHost()) {
-      fb.core.util.cache.remove(this.repoInfo_.namespace);
+      fb.core.storage.PersistentStorage.remove("host:" + this.repoInfo_.host);
       this.repoInfo_.internalHost = this.repoInfo_.host
     }
   }else {
@@ -5538,7 +5700,8 @@ goog.require("fb.util.json");
 goog.require("fb.core.util.VisibilityMonitor");
 goog.require("fb.core.util.OnlineMonitor");
 var RECONNECT_MIN_DELAY = 1E3;
-var RECONNECT_MAX_DELAY = 60 * 5 * 1E3;
+var RECONNECT_MAX_DELAY_DEFAULT = 60 * 5 * 1E3;
+var RECONNECT_MAX_DELAY_FOR_ADMINS = 30 * 1E3;
 var RECONNECT_DELAY_MULTIPLIER = 1.3;
 var RECONNECT_DELAY_RESET_TIMEOUT = 3E4;
 fb.core.PersistentConnection = function(repoInfo, onDataUpdate, onConnectStatus, onAuthStatus, onServerInfoUpdate, getServerDataHashForPath) {
@@ -5551,6 +5714,7 @@ fb.core.PersistentConnection = function(repoInfo, onDataUpdate, onConnectStatus,
   this.onDisconnectRequestQueue_ = [];
   this.connected_ = false;
   this.reconnectDelay_ = RECONNECT_MIN_DELAY;
+  this.maxReconnectDelay_ = RECONNECT_MAX_DELAY_DEFAULT;
   this.onDataUpdate_ = onDataUpdate || goog.nullFunction;
   this.onConnectStatus_ = onConnectStatus || goog.nullFunction;
   this.onAuthStatus_ = onAuthStatus || goog.nullFunction;
@@ -5615,7 +5779,31 @@ fb.core.PersistentConnection.prototype.sendListen_ = function(pathString, queryI
 fb.core.PersistentConnection.prototype.auth = function(cred, callback, cancelCallback) {
   this.credential_ = {cred:cred, firstRequestSent:false, callback:callback, cancelCallback:cancelCallback};
   this.log_("Authenticating using credential: " + this.credential_);
-  this.tryAuth()
+  this.tryAuth();
+  this.reduceReconnectDelayIfAdminCredential_(cred)
+};
+fb.core.PersistentConnection.prototype.reduceReconnectDelayIfAdminCredential_ = function(credential) {
+  var isFirebaseSecret = credential.length == 40;
+  if(isFirebaseSecret || this.isAdminAuthToken_(credential)) {
+    this.log_("Admin auth credential detected.  Reducing max reconnect time.");
+    this.maxReconnectDelay_ = RECONNECT_MAX_DELAY_FOR_ADMINS
+  }
+};
+fb.core.PersistentConnection.prototype.isAdminAuthToken_ = function(credential) {
+  var claims;
+  try {
+    var parts = credential.split(".");
+    if(parts.length !== 3) {
+      return false
+    }
+    var claimsString = fb.core.util.base64DecodeIfNativeSupport(parts[1]);
+    if(claimsString !== null) {
+      claims = fb.util.json.eval(claimsString)
+    }
+  }catch(e) {
+    fb.core.util.log("isAdminAuthToken_ failed", e)
+  }
+  return typeof claims === "object" && fb.util.obj.get(claims, "admin") === true
 };
 fb.core.PersistentConnection.prototype.unauth = function(onComplete) {
   delete this.credential_;
@@ -5810,7 +5998,7 @@ fb.core.PersistentConnection.prototype.scheduleConnect_ = function(timeout) {
   }, timeout)
 };
 fb.core.PersistentConnection.prototype.onVisible_ = function(visible) {
-  if(visible && !this.visible_ && this.reconnectDelay_ === RECONNECT_MAX_DELAY) {
+  if(visible && !this.visible_ && this.reconnectDelay_ === this.maxReconnectDelay_) {
     this.log_("Window became visible.  Reducing delay.");
     this.reconnectDelay_ = RECONNECT_MIN_DELAY;
     if(!this.realtime_) {
@@ -5847,7 +6035,7 @@ fb.core.PersistentConnection.prototype.onRealtimeDisconnect_ = function() {
   }else {
     if(!this.visible_) {
       this.log_("Window isn't visible.  Delaying reconnect.");
-      this.reconnectDelay_ = RECONNECT_MAX_DELAY;
+      this.reconnectDelay_ = this.maxReconnectDelay_;
       this.lastConnectionAttemptTime_ = (new Date).getTime()
     }else {
       if(this.lastConnectionEstablishedTime_) {
@@ -5863,7 +6051,7 @@ fb.core.PersistentConnection.prototype.onRealtimeDisconnect_ = function() {
     reconnectDelay = Math.random() * reconnectDelay;
     this.log_("Trying to reconnect in " + reconnectDelay + "ms");
     this.scheduleConnect_(reconnectDelay);
-    this.reconnectDelay_ = Math.min(RECONNECT_MAX_DELAY, this.reconnectDelay_ * RECONNECT_DELAY_MULTIPLIER)
+    this.reconnectDelay_ = Math.min(this.maxReconnectDelay_, this.reconnectDelay_ * RECONNECT_DELAY_MULTIPLIER)
   }
   this.onConnectStatus_(false)
 };
@@ -7510,7 +7698,13 @@ fb.core.Repo.prototype.setPriority = function(path, priority, opt_onComplete) {
   var setIds = this.data_.set(path, prunedNodes);
   var self = this;
   this.connection_.put(path.toString() + "/.priority", priority, function(status) {
+    if(status === "permission_denied") {
+      fb.core.util.warn("setPriority at " + path + " failed: " + status)
+    }
     self.data_.setCompleted(setIds);
+    self.data_.mergeServerAndPendingData(path);
+    var affectedPath = self.rerunTransactionsAndUpdateVisibleData_(path);
+    self.viewManager_.raiseEventsForChange(affectedPath, []);
     self.callOnCompleteCallback(opt_onComplete, status)
   });
   var affectedPath = this.rerunTransactionsAndUpdateVisibleData_(path);
@@ -7721,7 +7915,10 @@ fb.core.Repo.prototype.sendReadyTransactions_ = function(opt_node) {
   if(node.getValue() !== null) {
     var queue = this.buildTransactionQueue_(node);
     fb.core.util.assert(queue.length > 0);
-    if(queue[0].status !== fb.core.TransactionStatus.SENT && queue[0].status !== fb.core.TransactionStatus.SENT_NEEDS_ABORT) {
+    var allRun = goog.array.every(queue, function(transaction) {
+      return transaction.status === fb.core.TransactionStatus.RUN
+    });
+    if(allRun) {
       this.sendTransactionQueue_(node.path(), queue)
     }
   }else {
@@ -8157,6 +8354,7 @@ goog.require("fb.core.util");
 goog.require("fb.core.RepoManager");
 goog.require("fb.api.Query");
 goog.require("fb.api.onDisconnect");
+goog.require("fb.core.storage");
 goog.require("fb.core.Repo");
 goog.require("fb.core.util.validation");
 goog.require("fb.core.util.NextPushId");
@@ -8245,6 +8443,9 @@ Firebase.prototype.update = function(objectToMerge, onComplete) {
   fb.core.util.validation.validateWritablePath("Firebase.update", this.path);
   fb.core.util.validation.validateFirebaseObjectDataArg("Firebase.update", 1, objectToMerge, false);
   fb.util.validation.validateCallback("Firebase.update", 2, onComplete, true);
+  if(fb.util.obj.contains(objectToMerge, ".priority")) {
+    throw new Error("update() does not currently support updating .priority.");
+  }
   return this.repo.update(this.path, objectToMerge, onComplete)
 };
 Firebase.prototype.setWithPriority = function(newVal, newPriority, onComplete) {
@@ -8346,14 +8547,14 @@ Firebase.enableLogging = function(logger, persistent) {
       }
     }
     if(persistent) {
-      fb.core.util.cache.set("logging_enabled", "true")
+      fb.core.storage.SessionStorage.set("logging_enabled", true)
     }
   }else {
     if(logger) {
       fb.core.util.logger = logger
     }else {
       fb.core.util.logger = null;
-      fb.core.util.cache.remove("logging_enabled")
+      fb.core.storage.SessionStorage.remove("logging_enabled")
     }
   }
 };
