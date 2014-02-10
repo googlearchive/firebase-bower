@@ -5069,28 +5069,28 @@ if(typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
 ;goog.provide("fb.core.util.NodePatches");
 (function() {
   if(NODE_CLIENT) {
-    var version = process.version;
+    var version = process["version"];
     if(version === "v0.10.22" || version === "v0.10.23" || version === "v0.10.24") {
       var Writable = require("_stream_writable");
-      Writable.prototype.write = function(chunk, encoding, cb) {
-        var state = this._writableState;
+      Writable["prototype"]["write"] = function(chunk, encoding, cb) {
+        var state = this["_writableState"];
         var ret = false;
         if(typeof encoding === "function") {
           cb = encoding;
           encoding = null
         }
-        if(Buffer.isBuffer(chunk)) {
+        if(Buffer["isBuffer"](chunk)) {
           encoding = "buffer"
         }else {
           if(!encoding) {
-            encoding = state.defaultEncoding
+            encoding = state["defaultEncoding"]
           }
         }
         if(typeof cb !== "function") {
           cb = function() {
           }
         }
-        if(state.ended) {
+        if(state["ended"]) {
           writeAfterEnd(this, state, cb)
         }else {
           if(validChunk(this, state, chunk, cb)) {
@@ -5101,17 +5101,17 @@ if(typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
       };
       function writeAfterEnd(stream, state, cb) {
         var er = new Error("write after end");
-        stream.emit("error", er);
-        process.nextTick(function() {
+        stream["emit"]("error", er);
+        process["nextTick"](function() {
           cb(er)
         })
       }
       function validChunk(stream, state, chunk, cb) {
         var valid = true;
-        if(!Buffer.isBuffer(chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state.objectMode) {
+        if(!Buffer["isBuffer"](chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state["objectMode"]) {
           var er = new TypeError("Invalid non-string/buffer chunk");
-          stream.emit("error", er);
-          process.nextTick(function() {
+          stream["emit"]("error", er);
+          process["nextTick"](function() {
             cb(er)
           });
           valid = false
@@ -5120,43 +5120,43 @@ if(typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
       }
       function writeOrBuffer(stream, state, chunk, encoding, cb) {
         chunk = decodeChunk(state, chunk, encoding);
-        if(Buffer.isBuffer(chunk)) {
+        if(Buffer["isBuffer"](chunk)) {
           encoding = "buffer"
         }
-        var len = state.objectMode ? 1 : chunk.length;
-        state.length += len;
-        var ret = state.length < state.highWaterMark;
+        var len = state["objectMode"] ? 1 : chunk["length"];
+        state["length"] += len;
+        var ret = state["length"] < state["highWaterMark"];
         if(!ret) {
-          state.needDrain = true
+          state["needDrain"] = true
         }
-        if(state.writing) {
-          state.buffer.push(new WriteReq(chunk, encoding, cb))
+        if(state["writing"]) {
+          state["buffer"]["push"](new WriteReq(chunk, encoding, cb))
         }else {
           doWrite(stream, state, len, chunk, encoding, cb)
         }
         return ret
       }
       function decodeChunk(state, chunk, encoding) {
-        if(!state.objectMode && state.decodeStrings !== false && typeof chunk === "string") {
+        if(!state["objectMode"] && state["decodeStrings"] !== false && typeof chunk === "string") {
           chunk = new Buffer(chunk, encoding)
         }
         return chunk
       }
       function WriteReq(chunk, encoding, cb) {
-        this.chunk = chunk;
-        this.encoding = encoding;
-        this.callback = cb
+        this["chunk"] = chunk;
+        this["encoding"] = encoding;
+        this["callback"] = cb
       }
       function doWrite(stream, state, len, chunk, encoding, cb) {
-        state.writelen = len;
-        state.writecb = cb;
-        state.writing = true;
-        state.sync = true;
-        stream._write(chunk, encoding, state.onwrite);
-        state.sync = false
+        state["writelen"] = len;
+        state["writecb"] = cb;
+        state["writing"] = true;
+        state["sync"] = true;
+        stream["_write"](chunk, encoding, state["onwrite"]);
+        state["sync"] = false
       }
       var Duplex = require("_stream_duplex");
-      Duplex.prototype.write = Writable.prototype.write
+      Duplex["prototype"]["write"] = Writable["prototype"]["write"]
     }
   }
 })();
