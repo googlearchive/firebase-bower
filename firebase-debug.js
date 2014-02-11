@@ -2091,9 +2091,10 @@ goog.scope(function() {
 goog.provide("fb.core.storage");
 goog.require("fb.core.storage.DOMStorageWrapper");
 goog.require("fb.core.storage.MemoryStorage");
-fb.core.storage.createStoragefor = function(domStorage) {
+fb.core.storage.createStoragefor = function(domStorageName) {
   try {
-    if(domStorage) {
+    if(typeof window !== "undefined" && typeof window[domStorageName] !== "undefined") {
+      var domStorage = window[domStorageName];
       domStorage.setItem("firebase:sentinel", "cache");
       domStorage.removeItem("firebase:sentinel");
       return new fb.core.storage.DOMStorageWrapper(domStorage)
@@ -2102,8 +2103,8 @@ fb.core.storage.createStoragefor = function(domStorage) {
   }
   return new fb.core.storage.MemoryStorage
 };
-fb.core.storage.PersistentStorage = fb.core.storage.createStoragefor(typeof localStorage !== "undefined" ? localStorage : null);
-fb.core.storage.SessionStorage = fb.core.storage.createStoragefor(typeof sessionStorage !== "undefined" ? sessionStorage : null);
+fb.core.storage.PersistentStorage = fb.core.storage.createStoragefor("localStorage");
+fb.core.storage.SessionStorage = fb.core.storage.createStoragefor("sessionStorage");
 goog.provide("fb.core.RepoInfo");
 goog.require("fb.core.storage");
 fb.core.RepoInfo = function(host, secure, namespace, internalHost) {
@@ -7561,8 +7562,12 @@ fb.core.Repo.prototype.onDataUpdate_ = function(pathString, data, isMerge) {
       newNode = this.data_.serverData.getNode(path);
       goog.object.forEach(data, function(childData, childName) {
         var childPath = new fb.core.util.Path(childName);
-        newNode = newNode.updateChild(childPath, fb.core.snap.NodeFromJSON(childData));
-        completePaths.push(path.child(childName))
+        if(childName === ".priority") {
+          newNode = newNode.updatePriority(childData)
+        }else {
+          newNode = newNode.updateChild(childPath, fb.core.snap.NodeFromJSON(childData));
+          completePaths.push(path.child(childName))
+        }
       })
     }else {
       path = new fb.core.util.Path(pathString);
