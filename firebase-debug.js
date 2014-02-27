@@ -8039,10 +8039,15 @@ fb.core.Repo.prototype.rerunTransactionQueue_ = function(queue, path) {
           abortTransaction = true;
           abortReason = "maxretry"
         }else {
-          var newData = queue[i].update(resultNode.getChild(relativePath).val());
+          var currentNode = resultNode.getChild(relativePath);
+          var newData = queue[i].update(currentNode.val());
           if(goog.isDef(newData)) {
             fb.core.util.validation.validateFirebaseData("transaction failed: Data returned ", newData);
             var newDataNode = fb.core.snap.NodeFromJSON(newData);
+            var hasExplicitPriority = typeof newData === "object" && newData != null && fb.util.obj.contains(newData, ".priority");
+            if(!hasExplicitPriority) {
+              newDataNode = newDataNode.updatePriority(currentNode.getPriority())
+            }
             resultNode = resultNode.updateChild(relativePath, newDataNode);
             if(queue[i].applyLocally) {
               dataToRaiseEventsForNode = dataToRaiseEventsForNode.updateChild(relativePath, newDataNode)
@@ -8070,10 +8075,6 @@ fb.core.Repo.prototype.rerunTransactionQueue_ = function(queue, path) {
       }
     }
   }
-  var currentNode = this.data_.mergedData.getNode(path);
-  var priorityForNode = currentNode.getPriority();
-  resultNode = resultNode.updatePriority(priorityForNode);
-  dataToRaiseEventsForNode = dataToRaiseEventsForNode.updatePriority(priorityForNode);
   this.transactionResultData_.updateSnapshot(path, resultNode);
   this.data_.visibleData.updateSnapshot(path, dataToRaiseEventsForNode);
   this.pruneCompletedTransactionsBelowNode_(this.transactionQueueTree_);
