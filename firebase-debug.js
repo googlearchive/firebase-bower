@@ -5812,7 +5812,8 @@ fb.core.PersistentConnection.prototype.unauth = function(onComplete) {
   if(this.connected_) {
     this.sendRequest_("unauth", {}, function(result) {
       var status = result["s"];
-      onComplete(status)
+      var errorReason = result["d"];
+      onComplete(status, errorReason)
     })
   }
 };
@@ -5888,7 +5889,7 @@ fb.core.PersistentConnection.prototype.sendOnDisconnect_ = function(action, path
   this.sendRequest_(action, request, function(response) {
     if(opt_onComplete) {
       setTimeout(function() {
-        opt_onComplete(response["s"])
+        opt_onComplete(response["s"], response["d"])
       }, 0)
     }
   })
@@ -5925,7 +5926,7 @@ fb.core.PersistentConnection.prototype.sendPut_ = function(index) {
       self.outstandingPuts_ = []
     }
     if(onComplete) {
-      onComplete(message["s"])
+      onComplete(message["s"], message["d"])
     }
   })
 };
@@ -7628,8 +7629,8 @@ fb.core.Repo.prototype.auth = function(cred, onComplete, onCancel) {
 };
 fb.core.Repo.prototype.unauth = function(onComplete) {
   var self = this;
-  this.connection_.unauth(function(status) {
-    self.callOnCompleteCallback(onComplete, status)
+  this.connection_.unauth(function(status, errorReason) {
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   })
 };
 fb.core.Repo.prototype.setWithPriority = function(path, newVal, newPriority, onComplete) {
@@ -7640,7 +7641,7 @@ fb.core.Repo.prototype.setWithPriority = function(path, newVal, newPriority, onC
   var prunedNodes = this.viewManager_.pruneUpdateNode(path, newNode, this.data_.mergedData, null);
   var setIds = this.data_.set(path, prunedNodes);
   var self = this;
-  this.connection_.put(path.toString(), newNodeUnresolved.val(true), function(status) {
+  this.connection_.put(path.toString(), newNodeUnresolved.val(true), function(status, errorReason) {
     var success = status === "ok";
     if(!success) {
       fb.core.util.warn("set at " + path + " failed: " + status)
@@ -7649,7 +7650,7 @@ fb.core.Repo.prototype.setWithPriority = function(path, newVal, newPriority, onC
     self.data_.mergeServerAndPendingData(path);
     var affectedPath = self.rerunTransactionsAndUpdateVisibleData_(path);
     self.viewManager_.raiseEventsForChange(affectedPath, []);
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   });
   var affectedPath = this.abortTransactions_(path);
   this.rerunTransactionsAndUpdateVisibleData_(affectedPath);
@@ -7678,7 +7679,7 @@ fb.core.Repo.prototype.update = function(path, childrenToMerge, onComplete) {
     return
   }
   var self = this;
-  this.connection_.merge(path.toString(), childrenToMerge, function(status) {
+  this.connection_.merge(path.toString(), childrenToMerge, function(status, errorReason) {
     fb.core.util.assert(status === "ok" || status === "permission_denied", "merge at " + path + " failed.");
     var success = status === "ok";
     if(!success) {
@@ -7688,7 +7689,7 @@ fb.core.Repo.prototype.update = function(path, childrenToMerge, onComplete) {
     self.data_.mergeServerAndPendingData(path);
     var affectedPath = self.rerunTransactionsAndUpdateVisibleData_(path);
     self.viewManager_.raiseEventsForChange(affectedPath, []);
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   });
   var affectedPath = this.abortTransactions_(path);
   this.rerunTransactionsAndUpdateVisibleData_(affectedPath);
@@ -7702,7 +7703,7 @@ fb.core.Repo.prototype.setPriority = function(path, priority, opt_onComplete) {
   var prunedNodes = this.viewManager_.pruneUpdateNode(path, newNode, this.data_.mergedData, null);
   var setIds = this.data_.set(path, prunedNodes);
   var self = this;
-  this.connection_.put(path.toString() + "/.priority", priority, function(status) {
+  this.connection_.put(path.toString() + "/.priority", priority, function(status, errorReason) {
     if(status === "permission_denied") {
       fb.core.util.warn("setPriority at " + path + " failed: " + status)
     }
@@ -7710,7 +7711,7 @@ fb.core.Repo.prototype.setPriority = function(path, priority, opt_onComplete) {
     self.data_.mergeServerAndPendingData(path);
     var affectedPath = self.rerunTransactionsAndUpdateVisibleData_(path);
     self.viewManager_.raiseEventsForChange(affectedPath, []);
-    self.callOnCompleteCallback(opt_onComplete, status)
+    self.callOnCompleteCallback(opt_onComplete, status, errorReason)
   });
   var affectedPath = this.rerunTransactionsAndUpdateVisibleData_(path);
   self.viewManager_.raiseEventsForChange(affectedPath, [])
@@ -7733,31 +7734,31 @@ fb.core.Repo.prototype.runOnDisconnectEvents_ = function() {
 };
 fb.core.Repo.prototype.onDisconnectCancel = function(path, onComplete) {
   var self = this;
-  this.connection_.onDisconnectCancel(path.toString(), function(status) {
+  this.connection_.onDisconnectCancel(path.toString(), function(status, errorReason) {
     if(status === "ok") {
       self.onDisconnect_.forget(path)
     }
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   })
 };
 fb.core.Repo.prototype.onDisconnectSet = function(path, value, onComplete) {
   var self = this;
   var newNode = fb.core.snap.NodeFromJSON(value);
-  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status) {
+  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
     if(status === "ok") {
       self.onDisconnect_.remember(path, newNode)
     }
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   })
 };
 fb.core.Repo.prototype.onDisconnectSetWithPriority = function(path, value, priority, onComplete) {
   var self = this;
   var newNode = fb.core.snap.NodeFromJSON(value, priority);
-  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status) {
+  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
     if(status === "ok") {
       self.onDisconnect_.remember(path, newNode)
     }
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   })
 };
 fb.core.Repo.prototype.onDisconnectUpdate = function(path, childrenToMerge, onComplete) {
@@ -7767,18 +7768,18 @@ fb.core.Repo.prototype.onDisconnectUpdate = function(path, childrenToMerge, onCo
   }
   if(empty) {
     fb.core.util.log("onDisconnect().update() called with empty data.  Don't do anything.");
-    this.callOnCompleteCallback(onComplete, true);
+    this.callOnCompleteCallback(onComplete, "ok");
     return
   }
   var self = this;
-  this.connection_.onDisconnectMerge(path.toString(), childrenToMerge, function(status) {
+  this.connection_.onDisconnectMerge(path.toString(), childrenToMerge, function(status, errorReason) {
     if(status === "ok") {
       for(var childName in childrenToMerge) {
         var newChildNode = fb.core.snap.NodeFromJSON(childrenToMerge[childName]);
         self.onDisconnect_.remember(path.child(childName), newChildNode)
       }
     }
-    self.callOnCompleteCallback(onComplete, status)
+    self.callOnCompleteCallback(onComplete, status, errorReason)
   })
 };
 fb.core.Repo.prototype.logOnDisconnectDeprecatedSignature = function() {
