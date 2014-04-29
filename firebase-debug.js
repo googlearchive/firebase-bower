@@ -2107,12 +2107,13 @@ fb.core.storage.PersistentStorage = fb.core.storage.createStoragefor("localStora
 fb.core.storage.SessionStorage = fb.core.storage.createStoragefor("sessionStorage");
 goog.provide("fb.core.RepoInfo");
 goog.require("fb.core.storage");
-fb.core.RepoInfo = function(host, secure, namespace, internalHost) {
+fb.core.RepoInfo = function(host, secure, namespace, webSocketOnly) {
   this.host = host.toLowerCase();
   this.domain = this.host.substr(this.host.indexOf(".") + 1);
   this.secure = secure;
   this.namespace = namespace;
-  this.internalHost = internalHost || fb.core.storage.PersistentStorage.get("host:" + host) || this.host
+  this.webSocketOnly = webSocketOnly;
+  this.internalHost = fb.core.storage.PersistentStorage.get("host:" + host) || this.host
 };
 fb.core.RepoInfo.prototype.needsQueryParam = function() {
   return this.host !== this.internalHost
@@ -3222,12 +3223,11 @@ fb.core.util.parseURL = function(dataURL) {
     }
     host = dataURL.substring(0, slashInd);
     dataURL = dataURL.substring(slashInd + 1);
-    slashInd = dataURL.indexOf("/");
     var parts = host.split(".");
     if(parts.length == 3) {
       colonInd = parts[2].indexOf(":");
       if(colonInd >= 0) {
-        secure = scheme === "https"
+        secure = scheme === "https" || scheme === "wss"
       }else {
         secure = true
       }
@@ -3246,7 +3246,8 @@ fb.core.util.parseURL = function(dataURL) {
   if(!secure) {
     fb.core.util.warnIfPageIsSecure()
   }
-  return{repoInfo:new fb.core.RepoInfo(host, secure, namespace), path:new fb.core.util.Path(pathString)}
+  var webSocketOnly = scheme === "ws" || scheme === "wss";
+  return{repoInfo:new fb.core.RepoInfo(host, secure, namespace, webSocketOnly), path:new fb.core.util.Path(pathString)}
 };
 fb.core.util.decodePath = function(pathString) {
   var pathStringDecoded = "";
@@ -5359,24 +5360,29 @@ if(NODE_CLIENT) {
   goog.require("fb.realtime.HttpPollConnection")
 }
 goog.require("fb.realtime.BrowserPollConnection");
-fb.realtime.TransportManager = function() {
-  this.initTransports_()
+fb.realtime.TransportManager = function(repoInfo) {
+  this.initTransports_(repoInfo)
 };
 fb.realtime.TransportManager.ALL_TRANSPORTS = [fb.realtime.BrowserPollConnection, fb.realtime.HttpPollConnection, fb.realtime.WebSocketConnection];
-fb.realtime.TransportManager.prototype.initTransports_ = function() {
+fb.realtime.TransportManager.prototype.initTransports_ = function(repoInfo) {
   var isWebSocketsAvailable = fb.realtime.WebSocketConnection && fb.realtime.WebSocketConnection["isAvailable"]();
   var isSkipPollConnection = isWebSocketsAvailable && !fb.core.storage.PersistentStorage.get("previous_websocket_failure");
-  var transports = [];
+  if(repoInfo.webSocketOnly) {
+    if(!isWebSocketsAvailable) {
+      fb.core.util.warn("wss:// URL used, but browser isn't known to support websockets.  Trying anyway.")
+    }
+    isSkipPollConnection = true
+  }
   if(isSkipPollConnection) {
-    transports.push(fb.realtime.WebSocketConnection)
+    this.transports_ = [fb.realtime.WebSocketConnection]
   }else {
+    var transports = this.transports_ = [];
     fb.core.util.each(fb.realtime.TransportManager.ALL_TRANSPORTS, function(i, transport) {
       if(transport && transport["isAvailable"]()) {
         transports.push(transport)
       }
     })
   }
-  this.transports_ = transports
 };
 fb.realtime.TransportManager.prototype.initialTransport = function() {
   if(this.transports_.length > 0) {
@@ -5418,7 +5424,7 @@ fb.realtime.Connection = function(connId, repoInfo, onMessage, onReady, onDiscon
   this.repoInfo_ = repoInfo;
   this.pendingDataMessages = [];
   this.connectionCount = 0;
-  this.transportManager_ = new fb.realtime.TransportManager;
+  this.transportManager_ = new fb.realtime.TransportManager(repoInfo);
   this.state_ = REALTIME_STATE_CONNECTING;
   this.log_("Connection created");
   this.start_()
@@ -7551,6 +7557,9 @@ fb.core.Repo.prototype.generateServerValues = function() {
 };
 fb.core.Repo.prototype.onDataUpdate_ = function(pathString, data, isMerge) {
   this.dataUpdateCount++;
+  if(this.interceptServerDataCallback_) {
+    data = this.interceptServerDataCallback_(pathString, data)
+  }
   var path, newNode;
   var completePaths = [];
   if(pathString.length >= 9 && pathString.lastIndexOf(".priority") === pathString.length - 9) {
@@ -7586,6 +7595,9 @@ fb.core.Repo.prototype.onDataUpdate_ = function(pathString, data, isMerge) {
     path = this.rerunTransactionsAndUpdateVisibleData_(path)
   }
   this.viewManager_.raiseEventsForChange(path, completePaths)
+};
+fb.core.Repo.prototype.interceptServerData_ = function(callback) {
+  this.interceptServerDataCallback_ = callback
 };
 fb.core.Repo.prototype.onConnectStatus_ = function(connectStatus) {
   this.updateInfo_("connected", connectStatus);
@@ -8271,6 +8283,10 @@ goog.exportProperty(fb.api.INTERNAL, "statsIncrementCounter", fb.api.INTERNAL.st
 fb.api.INTERNAL.dataUpdateCount = function(ref) {
   return ref.repo.dataUpdateCount
 };
+fb.api.INTERNAL.interceptServerData = function(ref, callback) {
+  return ref.repo.interceptServerData_(callback)
+};
+goog.exportProperty(fb.api.INTERNAL, "interceptServerData", fb.api.INTERNAL.interceptServerData);
 goog.provide("fb.api.onDisconnect");
 goog.require("fb.constants");
 goog.require("fb.core.Repo");
