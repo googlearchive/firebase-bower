@@ -2059,6 +2059,7 @@ goog.scope(function() {
   DOMStorageWrapper.prototype.remove = function(key) {
     this.domStorage_.removeItem(this.prefixedName_(key))
   };
+  DOMStorageWrapper.prototype.isInMemoryStorage = false;
   DOMStorageWrapper.prototype.prefixedName_ = function(name) {
     return this.prefix_ + name
   }
@@ -2086,7 +2087,8 @@ goog.scope(function() {
   };
   MemoryStorage.prototype.remove = function(key) {
     delete this.cache_[key]
-  }
+  };
+  MemoryStorage.prototype.isInMemoryStorage = true
 });
 goog.provide("fb.core.storage");
 goog.require("fb.core.storage.DOMStorageWrapper");
@@ -4070,46 +4072,100 @@ fb.realtime.Transport.prototype.close = function() {
 };
 fb.realtime.Transport.prototype.send = function(data) {
 };
-goog.provide("fb.realtime.polling.PacketReceiver");
-fb.realtime.polling.PacketReceiver = function(onMessage) {
-  this.onMessage_ = onMessage;
-  this.pendingResponses = [];
-  this.currentResponseNum = 0;
-  this.closeAfterResponse = -1;
-  this.onClose = null
-};
-fb.realtime.polling.PacketReceiver.prototype.closeAfter = function(responseNum, callback) {
-  this.closeAfterResponse = responseNum;
-  this.onClose = callback;
-  if(this.closeAfterResponse < this.currentResponseNum) {
-    this.onClose();
-    this.onClose = null
-  }
-};
-fb.realtime.polling.PacketReceiver.prototype.handleResponse = function(requestNum, data) {
-  this.pendingResponses[requestNum] = data;
-  while(this.pendingResponses[this.currentResponseNum]) {
-    var toProcess = this.pendingResponses[this.currentResponseNum];
-    delete this.pendingResponses[this.currentResponseNum];
-    for(var i = 0;i < toProcess.length;++i) {
-      if(toProcess[i]) {
-        var self = this;
-        fb.core.util.exceptionGuard(function() {
-          self.onMessage_(toProcess[i])
+goog.provide("fb.core.util.NodePatches");
+(function() {
+  if(NODE_CLIENT) {
+    var version = process["version"];
+    if(version === "v0.10.22" || version === "v0.10.23" || version === "v0.10.24") {
+      var Writable = require("_stream_writable");
+      Writable["prototype"]["write"] = function(chunk, encoding, cb) {
+        var state = this["_writableState"];
+        var ret = false;
+        if(typeof encoding === "function") {
+          cb = encoding;
+          encoding = null
+        }
+        if(Buffer["isBuffer"](chunk)) {
+          encoding = "buffer"
+        }else {
+          if(!encoding) {
+            encoding = state["defaultEncoding"]
+          }
+        }
+        if(typeof cb !== "function") {
+          cb = function() {
+          }
+        }
+        if(state["ended"]) {
+          writeAfterEnd(this, state, cb)
+        }else {
+          if(validChunk(this, state, chunk, cb)) {
+            ret = writeOrBuffer(this, state, chunk, encoding, cb)
+          }
+        }
+        return ret
+      };
+      function writeAfterEnd(stream, state, cb) {
+        var er = new Error("write after end");
+        stream["emit"]("error", er);
+        process["nextTick"](function() {
+          cb(er)
         })
       }
-    }
-    if(this.currentResponseNum === this.closeAfterResponse) {
-      if(this.onClose) {
-        clearTimeout(this.onClose);
-        this.onClose();
-        this.onClose = null
+      function validChunk(stream, state, chunk, cb) {
+        var valid = true;
+        if(!Buffer["isBuffer"](chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state["objectMode"]) {
+          var er = new TypeError("Invalid non-string/buffer chunk");
+          stream["emit"]("error", er);
+          process["nextTick"](function() {
+            cb(er)
+          });
+          valid = false
+        }
+        return valid
       }
-      break
+      function writeOrBuffer(stream, state, chunk, encoding, cb) {
+        chunk = decodeChunk(state, chunk, encoding);
+        if(Buffer["isBuffer"](chunk)) {
+          encoding = "buffer"
+        }
+        var len = state["objectMode"] ? 1 : chunk["length"];
+        state["length"] += len;
+        var ret = state["length"] < state["highWaterMark"];
+        if(!ret) {
+          state["needDrain"] = true
+        }
+        if(state["writing"]) {
+          state["buffer"]["push"](new WriteReq(chunk, encoding, cb))
+        }else {
+          doWrite(stream, state, len, chunk, encoding, cb)
+        }
+        return ret
+      }
+      function decodeChunk(state, chunk, encoding) {
+        if(!state["objectMode"] && state["decodeStrings"] !== false && typeof chunk === "string") {
+          chunk = new Buffer(chunk, encoding)
+        }
+        return chunk
+      }
+      function WriteReq(chunk, encoding, cb) {
+        this["chunk"] = chunk;
+        this["encoding"] = encoding;
+        this["callback"] = cb
+      }
+      function doWrite(stream, state, len, chunk, encoding, cb) {
+        state["writelen"] = len;
+        state["writecb"] = cb;
+        state["writing"] = true;
+        state["sync"] = true;
+        stream["_write"](chunk, encoding, state["onwrite"]);
+        state["sync"] = false
+      }
+      var Duplex = require("_stream_duplex");
+      Duplex["prototype"]["write"] = Writable["prototype"]["write"]
     }
-    this.currentResponseNum++
   }
-};
+})();
 goog.provide("goog.object");
 goog.object.forEach = function(obj, f, opt_obj) {
   for(var key in obj) {
@@ -4406,240 +4462,229 @@ fb.core.stats.StatsManager.getOrCreateReporter = function(repoInfo, creatorFunct
   }
   return fb.core.stats.StatsManager.reporters_[hashString]
 };
+goog.provide("fb.realtime.WebSocketConnection");
+goog.require("fb.util.json");
 goog.require("fb.constants");
+goog.require("fb.core.util");
+goog.require("fb.realtime.Constants");
+goog.require("fb.realtime.Transport");
+goog.require("fb.core.storage");
+goog.require("fb.core.stats.StatsManager");
+var WEBSOCKET_MAX_FRAME_SIZE = 16384;
+var WEBSOCKET_KEEPALIVE_INTERVAL = 45E3;
+fb.WebSocket = null;
 if(NODE_CLIENT) {
-  goog.provide("fb.realtime.HttpPollConnection");
-  goog.require("fb.core.util");
-  goog.require("fb.util.json");
-  goog.require("fb.realtime.polling.PacketReceiver");
-  goog.require("fb.realtime.Constants");
-  goog.require("fb.realtime.Transport");
-  goog.require("fb.core.stats.StatsManager");
-  var http = require("http");
-  var HP_CONNECT_TIMEOUT = 3E4;
-  var HP_KEEPALIVE_REQUEST_INTERVAL = 25E3;
-  var HP_MAX_SEGMENT_SIZE = 1024 * 1024;
-  fb.realtime.HttpPollConnection = function(connId, repoInfo, sessionId) {
-    this.connId = connId;
-    this.log_ = fb.core.util.logWrapper(connId);
-    this.repoInfo_ = repoInfo;
-    this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
-    this.sessionId = sessionId;
-    this.everConnected_ = false;
-    this.isClosed_ = false;
-    this.outstandingRequests = new fb.core.util.CountedSet;
-    this.buffer = {};
-    this.pendingSegs = [];
-    this.pathFn = function(params) {
-      if(repoInfo.needsQueryParam()) {
-        params["ns"] = repoInfo.namespace
-      }
-      var pairs = [];
-      for(var k in params) {
-        if(params.hasOwnProperty(k)) {
-          pairs.push(k + "=" + params[k])
-        }
-      }
-      return"/.hp?" + pairs.join("&")
-    }
-  };
-  fb.realtime.HttpPollConnection["isAvailable"] = function() {
-    return false
-  };
-  fb.realtime.HttpPollConnection.prototype.open = function(onMessage, onDisconnect) {
-    this.curSegmentNum = 0;
-    this.onDisconnect_ = onDisconnect;
-    this.packetReceiver = new fb.realtime.polling.PacketReceiver(onMessage);
-    var self = this;
-    this.connectTimeoutTimer_ = setTimeout(function() {
-      self.log_("Timed out trying to connect.");
-      self.close();
-      self.connectTimeoutTimer_ = null
-    }, HP_CONNECT_TIMEOUT);
-    var serial = Math.floor(Math.random() * 1E8);
-    var urlParams = {};
-    urlParams["start"] = "t";
-    urlParams["ser"] = serial;
-    urlParams[fb.realtime.Constants.VERSION_PARAM] = fb.realtime.Constants.PROTOCOL_VERSION;
-    if(this.sessionId) {
-      urlParams[fb.realtime.Constants.SESSION_PARAM] = this.sessionId
-    }
-    this.log_("Connecting via httppoll to " + this.repoInfo_.internalHost);
-    this.makeRequest_(serial, urlParams)
-  };
-  fb.realtime.HttpPollConnection.prototype.start = function() {
-    this.startLongPoll_()
-  };
-  fb.realtime.HttpPollConnection.prototype.send = function(data) {
-    var msg = fb.util.json.stringify(data, false);
-    var encoded = fb.core.util.base64Encode(msg);
-    var segs = fb.core.util.splitStringBySize(encoded, HP_MAX_SEGMENT_SIZE);
-    for(var i = 0;i < segs.length;++i) {
-      this.enqueueSegment_(this.curSegmentNum, segs.length, segs[i]);
-      this.curSegmentNum++
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.close = function() {
-    if(!this.isClosed_) {
-      this.log_("Httppoll is being closed");
-      this.doDisconnect_();
-      this.shutdown_()
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.enqueueSegment_ = function(segNum, totalSegs, data) {
-    this.pendingSegs.push({seg:segNum, ts:totalSegs, d:data});
-    if(this.alive_) {
-      this.newRequest_()
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.startLongPoll_ = function() {
-    this.alive_ = true;
-    this.currentSerial = Math.floor(Math.random() * 1E8);
-    while(this.newRequest_()) {
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.newRequest_ = function() {
-    if(this.alive_ && this.outstandingRequests.count() < (this.pendingSegs.length > 0 ? 2 : 1)) {
-      var serial = this.currentSerial++;
-      var urlParams = {};
-      urlParams["id"] = this.id;
-      urlParams["pw"] = this.password;
-      urlParams["ser"] = serial;
-      var curData = [];
-      while(this.pendingSegs.length > 0) {
-        var nextSeg = this.pendingSegs[0];
-        if(nextSeg.d.length <= 1024 * 1024 + 32) {
-          var theSeg = this.pendingSegs.shift();
-          curData.push(theSeg.seg + ":" + theSeg.ts + ":" + theSeg.d)
-        }else {
-          break
-        }
-      }
-      var self = this;
-      var keepaliveTimeout = setTimeout(function() {
-        self.outstandingRequests.remove(serial);
-        self.newRequest_()
-      }, HP_KEEPALIVE_REQUEST_INTERVAL);
-      this.outstandingRequests.add(serial, keepaliveTimeout);
-      this.makeRequest_(serial, urlParams, curData.join("\n"));
-      return true
-    }else {
-      return false
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.onClosed_ = function() {
-    if(!this.isClosed_) {
-      this.log_("Httppoll is closing itself");
-      this.shutdown_();
-      if(this.onDisconnect_) {
-        this.onDisconnect_(this.everConnected_);
-        this.onDisconnect_ = null
-      }
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.shutdown_ = function() {
-    this.isClosed_ = true;
-    this.alive_ = false;
-    this.cancelConnectTimer_();
-    this.outstandingRequests.each(function(timeout) {
-      clearTimeout(timeout)
-    });
-    this.outstandingRequests.clear()
-  };
-  fb.realtime.HttpPollConnection.prototype.onData_ = function(chunk, res) {
-    var data = chunk["toString"]();
-    if(res in this.buffer) {
-      this.buffer[res] += data
-    }else {
-      this.buffer[res] = data
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.onEndData_ = function(res) {
-    if(res in this.buffer) {
-      var data = this.buffer[res];
-      delete this.buffer[res];
-      var parts = fb.util.json.eval(data);
-      var reqNum = parseInt(fb.core.util.requireKey("x-firebase-response", res["headers"]));
-      this.packetReceiver.handleResponse(reqNum, parts)
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.cancelConnectTimer_ = function() {
-    if(this.connectTimeoutTimer_) {
-      clearTimeout(this.connectTimeoutTimer_);
-      this.connectTimeoutTimer_ = null
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.cancelKeepaliveTimer_ = function(serial) {
-    var timer = this.outstandingRequests.get(serial);
-    if(timer) {
-      clearTimeout(timer)
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.onResponse_ = function(serial, res) {
-    this.cancelConnectTimer_();
-    this.cancelKeepaliveTimer_(serial);
-    this.outstandingRequests.remove(serial);
-    this.newRequest_();
-    if(res["statusCode"] != 200) {
-      this.log_("error code received: " + res["statusCode"]);
-      this.onClosed_()
-    }else {
-      if("x-firebase-poll-id" in res["headers"] && "x-firebase-poll-pw" in res["headers"]) {
-        this.id = res["headers"]["x-firebase-poll-id"];
-        this.password = res["headers"]["x-firebase-poll-pw"]
-      }
-      if("x-firebase-poll-close" in res["headers"]) {
-        this.log_("recvd close");
-        this.alive_ = false
-      }
-      var self = this;
-      res["on"]("data", function(chunk) {
-        self.onData_(chunk, res)
-      });
-      res["on"]("end", function() {
-        self.onEndData_(res)
-      })
-    }
-  };
-  fb.realtime.HttpPollConnection.prototype.makeRequest_ = function(serial, params, data) {
-    var toSend = data || "";
-    var path = this.pathFn(params);
-    var host = this.repoInfo_.internalHost;
-    var parts = host.split(":");
-    var port = this.repoInfo_.secure ? 443 : 80;
-    if(parts.length > 1) {
-      host = parts[0];
-      port = parseInt(parts[1])
-    }
-    var options = {method:"POST", host:host, port:port, path:path};
-    var self = this;
-    var req = http["request"](options, function(res) {
-      self.onResponse_(serial, res)
-    });
-    req["on"]("error", function(err) {
-      self.log_("An error occurred: " + err["message"]);
-      self.onClosed_()
-    });
-    req["end"](toSend)
-  };
-  fb.realtime.HttpPollConnection.prototype.doDisconnect_ = function() {
-    if(this.alive_ && this.id && this.password) {
-      this.log_("doing a disconnect");
-      var serial = 0;
-      var urlParams = {};
-      urlParams["id"] = this.id;
-      urlParams["pw"] = this.password;
-      urlParams["disconn"] = "t";
-      this.makeRequest_(serial, urlParams)
-    }
-  }
+  goog.require("fb.core.util.NodePatches");
+  fb.WebSocket = require("faye-websocket")["Client"]
 }else {
-  fb.realtime.HttpPollConnection = {};
-  fb.realtime.HttpPollConnection["isAvailable"] = function() {
-    return false
+  if(typeof MozWebSocket !== "undefined") {
+    fb.WebSocket = MozWebSocket
+  }else {
+    if(typeof WebSocket !== "undefined") {
+      fb.WebSocket = WebSocket
+    }
   }
 }
-;goog.provide("fb.core.util.CountedSet");
+fb.realtime.WebSocketConnection = function(connId, repoInfo, sessionId) {
+  this.connId = connId;
+  this.log_ = fb.core.util.logWrapper(this.connId);
+  this.keepaliveTimer = null;
+  this.frames = null;
+  this.totalFrames = 0;
+  this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
+  this.connURL = (repoInfo.secure ? "wss://" : "ws://") + repoInfo.internalHost + "/.ws?" + fb.realtime.Constants.VERSION_PARAM + "=" + fb.realtime.Constants.PROTOCOL_VERSION;
+  if(repoInfo.needsQueryParam()) {
+    this.connURL = this.connURL + "&ns=" + repoInfo.namespace
+  }
+  if(sessionId) {
+    this.connURL = this.connURL + "&" + fb.realtime.Constants.SESSION_PARAM + "=" + sessionId
+  }
+};
+fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
+  this.onDisconnect = onDisconn;
+  this.onMessage = onMess;
+  this.log_("Websocket connecting to " + this.connURL);
+  this.mySock = new fb.WebSocket(this.connURL);
+  this.everConnected_ = false;
+  fb.core.storage.PersistentStorage.set("previous_websocket_failure", true);
+  var self = this;
+  this.mySock.onopen = function() {
+    self.log_("Websocket connected.");
+    self.everConnected_ = true
+  };
+  this.mySock.onclose = function() {
+    self.log_("Websocket connection was disconnected.");
+    self.mySock = null;
+    self.onClosed_()
+  };
+  this.mySock.onmessage = function(m) {
+    self.handleIncomingFrame(m)
+  };
+  this.mySock.onerror = function(e) {
+    self.log_("WebSocket error.  Closing connection.");
+    if(e.data) {
+      self.log_(e.data)
+    }
+    self.onClosed_()
+  }
+};
+fb.realtime.WebSocketConnection.prototype.start = function() {
+};
+fb.realtime.WebSocketConnection.forceDisallow = function() {
+  fb.realtime.WebSocketConnection.forceDisallow_ = true
+};
+fb.realtime.WebSocketConnection["isAvailable"] = function() {
+  var isOldAndroid = false;
+  if(typeof navigator !== "undefined" && navigator.userAgent) {
+    var oldAndroidRegex = /Android ([0-9]{0,}\.[0-9]{0,})/;
+    var oldAndroidMatch = navigator.userAgent.match(oldAndroidRegex);
+    if(oldAndroidMatch && oldAndroidMatch.length > 1) {
+      if(parseFloat(oldAndroidMatch[1]) < 4.4) {
+        isOldAndroid = true
+      }
+    }
+  }
+  return!isOldAndroid && fb.WebSocket !== null && !fb.realtime.WebSocketConnection.forceDisallow_
+};
+fb.realtime.WebSocketConnection.responsesRequiredToBeHealthy = 2;
+fb.realtime.WebSocketConnection.healthyTimeout = 3E4;
+fb.realtime.WebSocketConnection.previouslyFailed = function() {
+  return fb.core.storage.PersistentStorage.isInMemoryStorage || fb.core.storage.PersistentStorage.get("previous_websocket_failure") === true
+};
+fb.realtime.WebSocketConnection.prototype.markConnectionHealthy = function() {
+  fb.core.storage.PersistentStorage.remove("previous_websocket_failure")
+};
+fb.realtime.WebSocketConnection.prototype.appendFrame_ = function(data) {
+  this.frames.push(data);
+  if(this.frames.length == this.totalFrames) {
+    var fullMess = this.frames.join("");
+    this.frames = null;
+    var jsonMess = fb.util.json.eval(fullMess);
+    this.onMessage(jsonMess)
+  }
+};
+fb.realtime.WebSocketConnection.prototype.handleNewFrameCount_ = function(frameCount) {
+  this.totalFrames = frameCount;
+  this.frames = []
+};
+fb.realtime.WebSocketConnection.prototype.extractFrameCount_ = function(data) {
+  fb.core.util.assert(this.frames === null, "We already have a frame buffer");
+  if(data.length <= 6) {
+    var frameCount = Number(data);
+    if(!isNaN(frameCount)) {
+      this.handleNewFrameCount_(frameCount);
+      return null
+    }
+  }
+  this.handleNewFrameCount_(1);
+  return data
+};
+fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
+  if(this.mySock === null) {
+    return
+  }
+  var data = mess["data"];
+  this.stats_.incrementCounter("bytes_received", data.length);
+  this.resetKeepAlive();
+  if(this.frames !== null) {
+    this.appendFrame_(data)
+  }else {
+    var remainingData = this.extractFrameCount_(data);
+    if(remainingData !== null) {
+      this.appendFrame_(remainingData)
+    }
+  }
+};
+fb.realtime.WebSocketConnection.prototype.send = function(data) {
+  this.resetKeepAlive();
+  data = fb.util.json.stringify(data, false);
+  this.stats_.incrementCounter("bytes_sent", data.length);
+  var dataSegs = fb.core.util.splitStringBySize(data, WEBSOCKET_MAX_FRAME_SIZE);
+  if(dataSegs.length > 1) {
+    this.mySock.send(String(dataSegs.length))
+  }
+  for(var i = 0;i < dataSegs.length;i++) {
+    this.mySock.send(dataSegs[i])
+  }
+};
+fb.realtime.WebSocketConnection.prototype.shutdown_ = function() {
+  this.isClosed_ = true;
+  if(this.keepaliveTimer) {
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null
+  }
+  if(this.mySock) {
+    this.mySock.close();
+    this.mySock = null
+  }
+};
+fb.realtime.WebSocketConnection.prototype.onClosed_ = function() {
+  if(!this.isClosed_) {
+    this.log_("WebSocket is closing itself");
+    this.shutdown_();
+    if(this.onDisconnect) {
+      this.onDisconnect(this.everConnected_);
+      this.onDisconnect = null
+    }
+  }
+};
+fb.realtime.WebSocketConnection.prototype.close = function() {
+  if(!this.isClosed_) {
+    this.log_("WebSocket is being closed");
+    this.shutdown_()
+  }
+};
+fb.realtime.WebSocketConnection.prototype.resetKeepAlive = function() {
+  var self = this;
+  clearInterval(this.keepaliveTimer);
+  this.keepaliveTimer = setInterval(function() {
+    if(self.mySock) {
+      self.mySock.send("0")
+    }
+    self.resetKeepAlive()
+  }, WEBSOCKET_KEEPALIVE_INTERVAL)
+};
+goog.provide("fb.realtime.polling.PacketReceiver");
+fb.realtime.polling.PacketReceiver = function(onMessage) {
+  this.onMessage_ = onMessage;
+  this.pendingResponses = [];
+  this.currentResponseNum = 0;
+  this.closeAfterResponse = -1;
+  this.onClose = null
+};
+fb.realtime.polling.PacketReceiver.prototype.closeAfter = function(responseNum, callback) {
+  this.closeAfterResponse = responseNum;
+  this.onClose = callback;
+  if(this.closeAfterResponse < this.currentResponseNum) {
+    this.onClose();
+    this.onClose = null
+  }
+};
+fb.realtime.polling.PacketReceiver.prototype.handleResponse = function(requestNum, data) {
+  this.pendingResponses[requestNum] = data;
+  while(this.pendingResponses[this.currentResponseNum]) {
+    var toProcess = this.pendingResponses[this.currentResponseNum];
+    delete this.pendingResponses[this.currentResponseNum];
+    for(var i = 0;i < toProcess.length;++i) {
+      if(toProcess[i]) {
+        var self = this;
+        fb.core.util.exceptionGuard(function() {
+          self.onMessage_(toProcess[i])
+        })
+      }
+    }
+    if(this.currentResponseNum === this.closeAfterResponse) {
+      if(this.onClose) {
+        clearTimeout(this.onClose);
+        this.onClose();
+        this.onClose = null
+      }
+      break
+    }
+    this.currentResponseNum++
+  }
+};
+goog.provide("fb.core.util.CountedSet");
 goog.require("fb.core.util");
 goog.require("goog.object");
 fb.core.util.CountedSet = function() {
@@ -4805,6 +4850,8 @@ fb.realtime.BrowserPollConnection.forceDisallow = function() {
 };
 fb.realtime.BrowserPollConnection["isAvailable"] = function() {
   return!fb.realtime.BrowserPollConnection.forceDisallow_ && !fb.core.util.isChromeExtensionContentScript() && !fb.core.util.isWindowsStoreApp() && (fb.realtime.BrowserPollConnection.forceAllow_ || !NODE_CLIENT)
+};
+fb.realtime.BrowserPollConnection.prototype.markConnectionHealthy = function() {
 };
 fb.realtime.BrowserPollConnection.prototype.shutdown_ = function() {
   this.isClosed_ = true;
@@ -5068,305 +5115,256 @@ if(typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
     document(this.commandCB, this.onMessageCB)
   }
 }
-;goog.provide("fb.core.util.NodePatches");
-(function() {
-  if(NODE_CLIENT) {
-    var version = process["version"];
-    if(version === "v0.10.22" || version === "v0.10.23" || version === "v0.10.24") {
-      var Writable = require("_stream_writable");
-      Writable["prototype"]["write"] = function(chunk, encoding, cb) {
-        var state = this["_writableState"];
-        var ret = false;
-        if(typeof encoding === "function") {
-          cb = encoding;
-          encoding = null
+;goog.require("fb.constants");
+if(NODE_CLIENT) {
+  goog.provide("fb.realtime.HttpPollConnection");
+  goog.require("fb.core.util");
+  goog.require("fb.util.json");
+  goog.require("fb.realtime.polling.PacketReceiver");
+  goog.require("fb.realtime.Constants");
+  goog.require("fb.realtime.Transport");
+  goog.require("fb.core.stats.StatsManager");
+  var http = require("http");
+  var HP_CONNECT_TIMEOUT = 3E4;
+  var HP_KEEPALIVE_REQUEST_INTERVAL = 25E3;
+  var HP_MAX_SEGMENT_SIZE = 1024 * 1024;
+  fb.realtime.HttpPollConnection = function(connId, repoInfo, sessionId) {
+    this.connId = connId;
+    this.log_ = fb.core.util.logWrapper(connId);
+    this.repoInfo_ = repoInfo;
+    this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
+    this.sessionId = sessionId;
+    this.everConnected_ = false;
+    this.isClosed_ = false;
+    this.outstandingRequests = new fb.core.util.CountedSet;
+    this.buffer = {};
+    this.pendingSegs = [];
+    this.pathFn = function(params) {
+      if(repoInfo.needsQueryParam()) {
+        params["ns"] = repoInfo.namespace
+      }
+      var pairs = [];
+      for(var k in params) {
+        if(params.hasOwnProperty(k)) {
+          pairs.push(k + "=" + params[k])
         }
-        if(Buffer["isBuffer"](chunk)) {
-          encoding = "buffer"
+      }
+      return"/.hp?" + pairs.join("&")
+    }
+  };
+  fb.realtime.HttpPollConnection["isAvailable"] = function() {
+    return false
+  };
+  fb.realtime.HttpPollConnection.prototype.markConnectionHealthy = function() {
+  };
+  fb.realtime.HttpPollConnection.prototype.open = function(onMessage, onDisconnect) {
+    this.curSegmentNum = 0;
+    this.onDisconnect_ = onDisconnect;
+    this.packetReceiver = new fb.realtime.polling.PacketReceiver(onMessage);
+    var self = this;
+    this.connectTimeoutTimer_ = setTimeout(function() {
+      self.log_("Timed out trying to connect.");
+      self.close();
+      self.connectTimeoutTimer_ = null
+    }, HP_CONNECT_TIMEOUT);
+    var serial = Math.floor(Math.random() * 1E8);
+    var urlParams = {};
+    urlParams["start"] = "t";
+    urlParams["ser"] = serial;
+    urlParams[fb.realtime.Constants.VERSION_PARAM] = fb.realtime.Constants.PROTOCOL_VERSION;
+    if(this.sessionId) {
+      urlParams[fb.realtime.Constants.SESSION_PARAM] = this.sessionId
+    }
+    this.log_("Connecting via httppoll to " + this.repoInfo_.internalHost);
+    this.makeRequest_(serial, urlParams)
+  };
+  fb.realtime.HttpPollConnection.prototype.start = function() {
+    this.startLongPoll_()
+  };
+  fb.realtime.HttpPollConnection.prototype.send = function(data) {
+    var msg = fb.util.json.stringify(data, false);
+    var encoded = fb.core.util.base64Encode(msg);
+    var segs = fb.core.util.splitStringBySize(encoded, HP_MAX_SEGMENT_SIZE);
+    for(var i = 0;i < segs.length;++i) {
+      this.enqueueSegment_(this.curSegmentNum, segs.length, segs[i]);
+      this.curSegmentNum++
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.close = function() {
+    if(!this.isClosed_) {
+      this.log_("Httppoll is being closed");
+      this.doDisconnect_();
+      this.shutdown_()
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.enqueueSegment_ = function(segNum, totalSegs, data) {
+    this.pendingSegs.push({seg:segNum, ts:totalSegs, d:data});
+    if(this.alive_) {
+      this.newRequest_()
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.startLongPoll_ = function() {
+    this.alive_ = true;
+    this.currentSerial = Math.floor(Math.random() * 1E8);
+    while(this.newRequest_()) {
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.newRequest_ = function() {
+    if(this.alive_ && this.outstandingRequests.count() < (this.pendingSegs.length > 0 ? 2 : 1)) {
+      var serial = this.currentSerial++;
+      var urlParams = {};
+      urlParams["id"] = this.id;
+      urlParams["pw"] = this.password;
+      urlParams["ser"] = serial;
+      var curData = [];
+      while(this.pendingSegs.length > 0) {
+        var nextSeg = this.pendingSegs[0];
+        if(nextSeg.d.length <= 1024 * 1024 + 32) {
+          var theSeg = this.pendingSegs.shift();
+          curData.push(theSeg.seg + ":" + theSeg.ts + ":" + theSeg.d)
         }else {
-          if(!encoding) {
-            encoding = state["defaultEncoding"]
-          }
+          break
         }
-        if(typeof cb !== "function") {
-          cb = function() {
-          }
-        }
-        if(state["ended"]) {
-          writeAfterEnd(this, state, cb)
-        }else {
-          if(validChunk(this, state, chunk, cb)) {
-            ret = writeOrBuffer(this, state, chunk, encoding, cb)
-          }
-        }
-        return ret
-      };
-      function writeAfterEnd(stream, state, cb) {
-        var er = new Error("write after end");
-        stream["emit"]("error", er);
-        process["nextTick"](function() {
-          cb(er)
-        })
       }
-      function validChunk(stream, state, chunk, cb) {
-        var valid = true;
-        if(!Buffer["isBuffer"](chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state["objectMode"]) {
-          var er = new TypeError("Invalid non-string/buffer chunk");
-          stream["emit"]("error", er);
-          process["nextTick"](function() {
-            cb(er)
-          });
-          valid = false
-        }
-        return valid
+      var self = this;
+      var keepaliveTimeout = setTimeout(function() {
+        self.outstandingRequests.remove(serial);
+        self.newRequest_()
+      }, HP_KEEPALIVE_REQUEST_INTERVAL);
+      this.outstandingRequests.add(serial, keepaliveTimeout);
+      this.makeRequest_(serial, urlParams, curData.join("\n"));
+      return true
+    }else {
+      return false
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.onClosed_ = function() {
+    if(!this.isClosed_) {
+      this.log_("Httppoll is closing itself");
+      this.shutdown_();
+      if(this.onDisconnect_) {
+        this.onDisconnect_(this.everConnected_);
+        this.onDisconnect_ = null
       }
-      function writeOrBuffer(stream, state, chunk, encoding, cb) {
-        chunk = decodeChunk(state, chunk, encoding);
-        if(Buffer["isBuffer"](chunk)) {
-          encoding = "buffer"
-        }
-        var len = state["objectMode"] ? 1 : chunk["length"];
-        state["length"] += len;
-        var ret = state["length"] < state["highWaterMark"];
-        if(!ret) {
-          state["needDrain"] = true
-        }
-        if(state["writing"]) {
-          state["buffer"]["push"](new WriteReq(chunk, encoding, cb))
-        }else {
-          doWrite(stream, state, len, chunk, encoding, cb)
-        }
-        return ret
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.shutdown_ = function() {
+    this.isClosed_ = true;
+    this.alive_ = false;
+    this.cancelConnectTimer_();
+    this.outstandingRequests.each(function(timeout) {
+      clearTimeout(timeout)
+    });
+    this.outstandingRequests.clear()
+  };
+  fb.realtime.HttpPollConnection.prototype.onData_ = function(chunk, res) {
+    var data = chunk["toString"]();
+    if(res in this.buffer) {
+      this.buffer[res] += data
+    }else {
+      this.buffer[res] = data
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.onEndData_ = function(res) {
+    if(res in this.buffer) {
+      var data = this.buffer[res];
+      delete this.buffer[res];
+      var parts = fb.util.json.eval(data);
+      var reqNum = parseInt(fb.core.util.requireKey("x-firebase-response", res["headers"]));
+      this.packetReceiver.handleResponse(reqNum, parts)
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.cancelConnectTimer_ = function() {
+    if(this.connectTimeoutTimer_) {
+      clearTimeout(this.connectTimeoutTimer_);
+      this.connectTimeoutTimer_ = null
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.cancelKeepaliveTimer_ = function(serial) {
+    var timer = this.outstandingRequests.get(serial);
+    if(timer) {
+      clearTimeout(timer)
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.onResponse_ = function(serial, res) {
+    this.cancelConnectTimer_();
+    this.cancelKeepaliveTimer_(serial);
+    this.outstandingRequests.remove(serial);
+    this.newRequest_();
+    if(res["statusCode"] != 200) {
+      this.log_("error code received: " + res["statusCode"]);
+      this.onClosed_()
+    }else {
+      if("x-firebase-poll-id" in res["headers"] && "x-firebase-poll-pw" in res["headers"]) {
+        this.id = res["headers"]["x-firebase-poll-id"];
+        this.password = res["headers"]["x-firebase-poll-pw"]
       }
-      function decodeChunk(state, chunk, encoding) {
-        if(!state["objectMode"] && state["decodeStrings"] !== false && typeof chunk === "string") {
-          chunk = new Buffer(chunk, encoding)
-        }
-        return chunk
+      if("x-firebase-poll-close" in res["headers"]) {
+        this.log_("recvd close");
+        this.alive_ = false
       }
-      function WriteReq(chunk, encoding, cb) {
-        this["chunk"] = chunk;
-        this["encoding"] = encoding;
-        this["callback"] = cb
-      }
-      function doWrite(stream, state, len, chunk, encoding, cb) {
-        state["writelen"] = len;
-        state["writecb"] = cb;
-        state["writing"] = true;
-        state["sync"] = true;
-        stream["_write"](chunk, encoding, state["onwrite"]);
-        state["sync"] = false
-      }
-      var Duplex = require("_stream_duplex");
-      Duplex["prototype"]["write"] = Writable["prototype"]["write"]
+      var self = this;
+      res["on"]("data", function(chunk) {
+        self.onData_(chunk, res)
+      });
+      res["on"]("end", function() {
+        self.onEndData_(res)
+      })
+    }
+  };
+  fb.realtime.HttpPollConnection.prototype.makeRequest_ = function(serial, params, data) {
+    var toSend = data || "";
+    var path = this.pathFn(params);
+    var host = this.repoInfo_.internalHost;
+    var parts = host.split(":");
+    var port = this.repoInfo_.secure ? 443 : 80;
+    if(parts.length > 1) {
+      host = parts[0];
+      port = parseInt(parts[1])
+    }
+    var options = {method:"POST", host:host, port:port, path:path};
+    var self = this;
+    var req = http["request"](options, function(res) {
+      self.onResponse_(serial, res)
+    });
+    req["on"]("error", function(err) {
+      self.log_("An error occurred: " + err["message"]);
+      self.onClosed_()
+    });
+    req["end"](toSend)
+  };
+  fb.realtime.HttpPollConnection.prototype.doDisconnect_ = function() {
+    if(this.alive_ && this.id && this.password) {
+      this.log_("doing a disconnect");
+      var serial = 0;
+      var urlParams = {};
+      urlParams["id"] = this.id;
+      urlParams["pw"] = this.password;
+      urlParams["disconn"] = "t";
+      this.makeRequest_(serial, urlParams)
     }
   }
-})();
-goog.provide("fb.realtime.WebSocketConnection");
-goog.require("fb.util.json");
-goog.require("fb.constants");
-goog.require("fb.core.util");
-goog.require("fb.realtime.Constants");
-goog.require("fb.realtime.Transport");
-goog.require("fb.core.storage");
-goog.require("fb.core.stats.StatsManager");
-var WEBSOCKET_MAX_FRAME_SIZE = 16384;
-var WEBSOCKET_KEEPALIVE_INTERVAL = 45E3;
-var WEBSOCKET_CONNECT_TIMEOUT = 3E4;
-fb.WebSocket = null;
-if(NODE_CLIENT) {
-  goog.require("fb.core.util.NodePatches");
-  fb.WebSocket = require("faye-websocket")["Client"]
 }else {
-  if(typeof MozWebSocket !== "undefined") {
-    fb.WebSocket = MozWebSocket
-  }else {
-    if(typeof WebSocket !== "undefined") {
-      fb.WebSocket = WebSocket
-    }
+  fb.realtime.HttpPollConnection = {};
+  fb.realtime.HttpPollConnection["isAvailable"] = function() {
+    return false
   }
 }
-fb.realtime.WebSocketConnection = function(connId, repoInfo, sessionId) {
-  this.connId = connId;
-  this.log_ = fb.core.util.logWrapper(this.connId);
-  this.keepaliveTimer = null;
-  this.frames = null;
-  this.totalFrames = 0;
-  this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
-  this.connURL = (repoInfo.secure ? "wss://" : "ws://") + repoInfo.internalHost + "/.ws?" + fb.realtime.Constants.VERSION_PARAM + "=" + fb.realtime.Constants.PROTOCOL_VERSION;
-  if(repoInfo.needsQueryParam()) {
-    this.connURL = this.connURL + "&ns=" + repoInfo.namespace
-  }
-  if(sessionId) {
-    this.connURL = this.connURL + "&" + fb.realtime.Constants.SESSION_PARAM + "=" + sessionId
-  }
-};
-fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
-  this.onDisconnect = onDisconn;
-  this.onMessage = onMess;
-  this.log_("Websocket connecting to " + this.connURL);
-  this.mySock = new fb.WebSocket(this.connURL);
-  this.everConnected_ = false;
-  fb.core.storage.PersistentStorage.set("previous_websocket_failure", true);
-  var self = this;
-  this.connectTimeoutTimer_ = setTimeout(function() {
-    self.log_("Websocket timed out trying to connect.");
-    self.cancelConnectTimer_();
-    self.onClosed_()
-  }, WEBSOCKET_CONNECT_TIMEOUT);
-  this.mySock.onopen = function() {
-    self.log_("Websocket connected.");
-    self.everConnected_ = true;
-    self.cancelConnectTimer_();
-    fb.core.storage.PersistentStorage.remove("previous_websocket_failure")
-  };
-  this.mySock.onclose = function() {
-    self.log_("Websocket connection was disconnected.");
-    self.mySock = null;
-    self.onClosed_()
-  };
-  this.mySock.onmessage = function(m) {
-    self.handleIncomingFrame(m)
-  };
-  this.mySock.onerror = function(e) {
-    self.log_("WebSocket error.  Closing connection.");
-    if(e.data) {
-      self.log_(e.data)
-    }
-    self.onClosed_()
-  }
-};
-fb.realtime.WebSocketConnection.prototype.start = function() {
-};
-fb.realtime.WebSocketConnection.forceDisallow = function() {
-  fb.realtime.WebSocketConnection.forceDisallow_ = true
-};
-fb.realtime.WebSocketConnection["isAvailable"] = function() {
-  var isOldAndroid = false;
-  if(typeof navigator !== "undefined" && navigator.userAgent) {
-    var oldAndroidRegex = /Android ([0-9]{0,}\.[0-9]{0,})/;
-    var oldAndroidMatch = navigator.userAgent.match(oldAndroidRegex);
-    if(oldAndroidMatch && oldAndroidMatch.length > 1) {
-      if(parseFloat(oldAndroidMatch[1]) < 4.4) {
-        isOldAndroid = true
-      }
-    }
-  }
-  return!isOldAndroid && fb.WebSocket !== null && !fb.realtime.WebSocketConnection.forceDisallow_
-};
-fb.realtime.WebSocketConnection.prototype.appendFrame_ = function(data) {
-  this.frames.push(data);
-  if(this.frames.length == this.totalFrames) {
-    var fullMess = this.frames.join("");
-    this.frames = null;
-    var jsonMess = fb.util.json.eval(fullMess);
-    this.onMessage(jsonMess)
-  }
-};
-fb.realtime.WebSocketConnection.prototype.handleNewFrameCount_ = function(frameCount) {
-  this.totalFrames = frameCount;
-  this.frames = []
-};
-fb.realtime.WebSocketConnection.prototype.extractFrameCount_ = function(data) {
-  fb.core.util.assert(this.frames === null, "We already have a frame buffer");
-  if(data.length <= 6) {
-    var frameCount = Number(data);
-    if(!isNaN(frameCount)) {
-      this.handleNewFrameCount_(frameCount);
-      return null
-    }
-  }
-  this.handleNewFrameCount_(1);
-  return data
-};
-fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
-  if(this.mySock === null) {
-    return
-  }
-  var data = mess["data"];
-  this.stats_.incrementCounter("bytes_received", data.length);
-  this.resetKeepAlive();
-  if(this.frames !== null) {
-    this.appendFrame_(data)
-  }else {
-    var remainingData = this.extractFrameCount_(data);
-    if(remainingData !== null) {
-      this.appendFrame_(remainingData)
-    }
-  }
-};
-fb.realtime.WebSocketConnection.prototype.send = function(data) {
-  this.resetKeepAlive();
-  data = fb.util.json.stringify(data, false);
-  this.stats_.incrementCounter("bytes_sent", data.length);
-  var dataSegs = fb.core.util.splitStringBySize(data, WEBSOCKET_MAX_FRAME_SIZE);
-  if(dataSegs.length > 1) {
-    this.mySock.send(String(dataSegs.length))
-  }
-  for(var i = 0;i < dataSegs.length;i++) {
-    this.mySock.send(dataSegs[i])
-  }
-};
-fb.realtime.WebSocketConnection.prototype.shutdown_ = function() {
-  this.isClosed_ = true;
-  this.cancelConnectTimer_();
-  if(this.keepaliveTimer) {
-    clearInterval(this.keepaliveTimer);
-    this.keepaliveTimer = null
-  }
-  if(this.mySock) {
-    this.mySock.close();
-    this.mySock = null
-  }
-};
-fb.realtime.WebSocketConnection.prototype.onClosed_ = function() {
-  if(!this.isClosed_) {
-    this.log_("WebSocket is closing itself");
-    this.shutdown_();
-    if(this.onDisconnect) {
-      this.onDisconnect(this.everConnected_);
-      this.onDisconnect = null
-    }
-  }
-};
-fb.realtime.WebSocketConnection.prototype.close = function() {
-  if(!this.isClosed_) {
-    this.log_("WebSocket is being closed");
-    this.shutdown_()
-  }
-};
-fb.realtime.WebSocketConnection.prototype.resetKeepAlive = function() {
-  var self = this;
-  clearInterval(this.keepaliveTimer);
-  this.keepaliveTimer = setInterval(function() {
-    if(self.mySock) {
-      self.mySock.send("0")
-    }
-    self.resetKeepAlive()
-  }, WEBSOCKET_KEEPALIVE_INTERVAL)
-};
-fb.realtime.WebSocketConnection.prototype.cancelConnectTimer_ = function() {
-  if(this.connectTimeoutTimer_) {
-    clearTimeout(this.connectTimeoutTimer_);
-    this.connectTimeoutTimer_ = null
-  }
-};
+;goog.require("fb.constants");
+goog.require("fb.realtime.BrowserPollConnection");
+goog.require("fb.realtime.Transport");
 goog.provide("fb.realtime.TransportManager");
 goog.require("fb.realtime.WebSocketConnection");
-goog.require("fb.constants");
-goog.require("fb.realtime.Transport");
-goog.require("fb.core.storage");
 if(NODE_CLIENT) {
   goog.require("fb.realtime.HttpPollConnection")
 }
-goog.require("fb.realtime.BrowserPollConnection");
 fb.realtime.TransportManager = function(repoInfo) {
   this.initTransports_(repoInfo)
 };
 fb.realtime.TransportManager.ALL_TRANSPORTS = [fb.realtime.BrowserPollConnection, fb.realtime.HttpPollConnection, fb.realtime.WebSocketConnection];
 fb.realtime.TransportManager.prototype.initTransports_ = function(repoInfo) {
   var isWebSocketsAvailable = fb.realtime.WebSocketConnection && fb.realtime.WebSocketConnection["isAvailable"]();
-  var isSkipPollConnection = isWebSocketsAvailable && !fb.core.storage.PersistentStorage.get("previous_websocket_failure");
+  var isSkipPollConnection = isWebSocketsAvailable && !fb.realtime.WebSocketConnection.previouslyFailed();
   if(repoInfo.webSocketOnly) {
     if(!isWebSocketsAvailable) {
       fb.core.util.warn("wss:// URL used, but browser isn't known to support websockets.  Trying anyway.")
@@ -5403,6 +5401,8 @@ goog.require("fb.realtime.Constants");
 goog.require("fb.core.storage");
 goog.require("fb.core.util");
 goog.require("fb.realtime.TransportManager");
+var UPGRADE_TIMEOUT = 6E4;
+var DELAY_BEFORE_SENDING_EXTRA_REQUESTS = 5E3;
 var REALTIME_STATE_CONNECTING = 0;
 var REALTIME_STATE_CONNECTED = 1;
 var REALTIME_STATE_DISCONNECTED = 2;
@@ -5411,8 +5411,10 @@ var MESSAGE_DATA = "d";
 var CONTROL_SHUTDOWN = "s";
 var CONTROL_RESET = "r";
 var CONTROL_ERROR = "e";
+var CONTROL_PONG = "o";
 var SWITCH_ACK = "a";
 var END_TRANSMISSION = "n";
+var PING = "p";
 var SERVER_HELLO = "h";
 fb.realtime.Connection = function(connId, repoInfo, onMessage, onReady, onDisconnect, onKill) {
   this.id = connId;
@@ -5432,15 +5434,27 @@ fb.realtime.Connection = function(connId, repoInfo, onMessage, onReady, onDiscon
 fb.realtime.Connection.prototype.start_ = function() {
   var conn = this.transportManager_.initialTransport();
   this.conn_ = new conn(this.nextTransportId_(), this.repoInfo_);
+  this.primaryResponsesRequired_ = conn.responsesRequiredToBeHealthy || 0;
   var onMessageReceived = this.connReceiver_(this.conn_);
   var onConnectionLost = this.disconnReceiver_(this.conn_);
   this.tx_ = this.conn_;
   this.rx_ = this.conn_;
   this.secondaryConn_ = null;
+  this.isHealthy_ = false;
   var self = this;
   setTimeout(function() {
     self.conn_ && self.conn_.open(onMessageReceived, onConnectionLost)
-  }, 0)
+  }, 0);
+  var healthyTimeout_ms = conn.healthyTimeout || 0;
+  if(healthyTimeout_ms > 0) {
+    this.healthyTimeout_ = setTimeout(function() {
+      self.healthyTimeout_ = null;
+      if(!self.isHealthy_) {
+        self.log_("Closing unhealthy connection after timeout.");
+        self.close()
+      }
+    }, healthyTimeout_ms)
+  }
 };
 fb.realtime.Connection.prototype.nextTransportId_ = function() {
   return"c:" + this.id + ":" + this.connectionCount++
@@ -5452,6 +5466,7 @@ fb.realtime.Connection.prototype.disconnReceiver_ = function(conn) {
       self.onConnectionLost_(everConnected)
     }else {
       if(conn === self.secondaryConn_) {
+        self.log_("Secondary connection lost.");
         self.onSecondaryConnectionLost_()
       }else {
         self.log_("closing an old connection")
@@ -5464,7 +5479,7 @@ fb.realtime.Connection.prototype.connReceiver_ = function(conn) {
   return function(message) {
     if(self.state_ != REALTIME_STATE_DISCONNECTED) {
       if(conn === self.rx_) {
-        self.onMessageReceived_(message)
+        self.onPrimaryMessageReceived_(message)
       }else {
         if(conn === self.secondaryConn_) {
           self.onSecondaryMessageReceived_(message)
@@ -5490,19 +5505,19 @@ fb.realtime.Connection.prototype.onSecondaryControl_ = function(controlData) {
   if(MESSAGE_TYPE in controlData) {
     var cmd = controlData[MESSAGE_TYPE];
     if(cmd === SWITCH_ACK) {
-      this.secondaryConn_.start();
-      this.log_("sending client ack on secondary");
-      this.secondaryConn_.send({"t":"c", "d":{"t":SWITCH_ACK, "d":{}}});
-      this.log_("Ending transmission on primary");
-      this.conn_.send({"t":"c", "d":{"t":END_TRANSMISSION, "d":{}}});
-      this.tx_ = this.secondaryConn_;
-      this.tryCleanupConnection()
+      this.upgradeIfSecondaryHealthy_()
     }else {
       if(cmd === CONTROL_RESET) {
         this.log_("Got a reset on secondary, closing it");
         this.secondaryConn_.close();
         if(this.tx_ === this.secondaryConn_ || this.rx_ === this.secondaryConn_) {
           this.close()
+        }
+      }else {
+        if(cmd === CONTROL_PONG) {
+          this.log_("got pong on secondary.");
+          this.secondaryResponsesRequired_--;
+          this.upgradeIfSecondaryHealthy_()
         }
       }
     }
@@ -5521,7 +5536,27 @@ fb.realtime.Connection.prototype.onSecondaryMessageReceived_ = function(parsedDa
     }
   }
 };
-fb.realtime.Connection.prototype.onMessageReceived_ = function(parsedData) {
+fb.realtime.Connection.prototype.upgradeIfSecondaryHealthy_ = function() {
+  if(this.secondaryResponsesRequired_ <= 0) {
+    this.log_("Secondary connection is healthy.");
+    this.isHealthy_ = true;
+    this.secondaryConn_.markConnectionHealthy();
+    this.proceedWithUpgrade_()
+  }else {
+    this.log_("sending ping on secondary.");
+    this.secondaryConn_.send({"t":"c", "d":{"t":PING, "d":{}}})
+  }
+};
+fb.realtime.Connection.prototype.proceedWithUpgrade_ = function() {
+  this.secondaryConn_.start();
+  this.log_("sending client ack on secondary");
+  this.secondaryConn_.send({"t":"c", "d":{"t":SWITCH_ACK, "d":{}}});
+  this.log_("Ending transmission on primary");
+  this.conn_.send({"t":"c", "d":{"t":END_TRANSMISSION, "d":{}}});
+  this.tx_ = this.secondaryConn_;
+  this.tryCleanupConnection()
+};
+fb.realtime.Connection.prototype.onPrimaryMessageReceived_ = function(parsedData) {
   var layer = fb.core.util.requireKey("t", parsedData);
   var data = fb.core.util.requireKey("d", parsedData);
   if(layer == "c") {
@@ -5533,7 +5568,18 @@ fb.realtime.Connection.prototype.onMessageReceived_ = function(parsedData) {
   }
 };
 fb.realtime.Connection.prototype.onDataMessage_ = function(message) {
+  this.onPrimaryResponse_();
   this.onMessage_(message)
+};
+fb.realtime.Connection.prototype.onPrimaryResponse_ = function() {
+  if(!this.isHealthy_) {
+    this.primaryResponsesRequired_--;
+    if(this.primaryResponsesRequired_ <= 0) {
+      this.log_("Primary connection is healthy.");
+      this.isHealthy_ = true;
+      this.conn_.markConnectionHealthy()
+    }
+  }
 };
 fb.realtime.Connection.prototype.onControl_ = function(controlData) {
   var cmd = fb.core.util.requireKey(MESSAGE_TYPE, controlData);
@@ -5560,7 +5606,13 @@ fb.realtime.Connection.prototype.onControl_ = function(controlData) {
             if(cmd === CONTROL_ERROR) {
               fb.core.util.error("Server Error: " + payload)
             }else {
-              fb.core.util.error("Unknown control packet command: " + cmd)
+              if(cmd === CONTROL_PONG) {
+                this.log_("got pong on primary.");
+                this.onPrimaryResponse_();
+                this.sendPingOnPrimaryIfNecessary_()
+              }else {
+                fb.core.util.error("Unknown control packet command: " + cmd)
+              }
             }
           }
         }
@@ -5591,9 +5643,17 @@ fb.realtime.Connection.prototype.tryStartUpgrade_ = function() {
 };
 fb.realtime.Connection.prototype.startUpgrade_ = function(conn) {
   this.secondaryConn_ = new conn(this.nextTransportId_(), this.repoInfo_, this.sessionId);
+  this.secondaryResponsesRequired_ = conn.responsesRequiredToBeHealthy || 0;
   var onMessage = this.connReceiver_(this.secondaryConn_);
   var onDisconnect = this.disconnReceiver_(this.secondaryConn_);
-  this.secondaryConn_.open(onMessage, onDisconnect)
+  this.secondaryConn_.open(onMessage, onDisconnect);
+  var self = this;
+  setTimeout(function() {
+    if(self.secondaryConn_) {
+      self.log_("Timed out trying to upgrade.");
+      self.secondaryConn_.close()
+    }
+  }, UPGRADE_TIMEOUT)
 };
 fb.realtime.Connection.prototype.onReset_ = function(host) {
   this.log_("Reset packet received.  New host: " + host);
@@ -5612,6 +5672,21 @@ fb.realtime.Connection.prototype.onConnectionEstablished_ = function(conn, times
   if(this.onReady_) {
     this.onReady_(timestamp);
     this.onReady_ = null
+  }
+  var self = this;
+  if(this.primaryResponsesRequired_ === 0) {
+    this.log_("Primary connection is healthy.");
+    this.isHealthy_ = true
+  }else {
+    setTimeout(function() {
+      self.sendPingOnPrimaryIfNecessary_()
+    }, DELAY_BEFORE_SENDING_EXTRA_REQUESTS)
+  }
+};
+fb.realtime.Connection.prototype.sendPingOnPrimaryIfNecessary_ = function() {
+  if(!this.isHealthy_ && this.state_ === REALTIME_STATE_CONNECTED) {
+    this.log_("sending ping on primary.");
+    this.sendData_({"t":"c", "d":{"t":PING, "d":{}}})
   }
 };
 fb.realtime.Connection.prototype.onSecondaryConnectionLost_ = function() {
@@ -5672,6 +5747,10 @@ fb.realtime.Connection.prototype.closeConnections_ = function() {
   if(this.secondaryConn_) {
     this.secondaryConn_.close();
     this.secondaryConn_ = null
+  }
+  if(this.healthyTimeout_) {
+    clearTimeout(this.healthyTimeout_);
+    this.healthyTimeout_ = null
   }
 };
 goog.provide("fb.core.util.OnlineMonitor");
