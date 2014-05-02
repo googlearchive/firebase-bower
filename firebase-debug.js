@@ -4546,8 +4546,8 @@ fb.realtime.WebSocketConnection["isAvailable"] = function() {
   }
   return!isOldAndroid && fb.WebSocket !== null && !fb.realtime.WebSocketConnection.forceDisallow_
 };
-fb.realtime.WebSocketConnection.responsesRequiredToBeHealthy = 2;
-fb.realtime.WebSocketConnection.healthyTimeout = 3E4;
+fb.realtime.WebSocketConnection["responsesRequiredToBeHealthy"] = 2;
+fb.realtime.WebSocketConnection["healthyTimeout"] = 3E4;
 fb.realtime.WebSocketConnection.previouslyFailed = function() {
   return fb.core.storage.PersistentStorage.isInMemoryStorage || fb.core.storage.PersistentStorage.get("previous_websocket_failure") === true
 };
@@ -5434,7 +5434,7 @@ fb.realtime.Connection = function(connId, repoInfo, onMessage, onReady, onDiscon
 fb.realtime.Connection.prototype.start_ = function() {
   var conn = this.transportManager_.initialTransport();
   this.conn_ = new conn(this.nextTransportId_(), this.repoInfo_);
-  this.primaryResponsesRequired_ = conn.responsesRequiredToBeHealthy || 0;
+  this.primaryResponsesRequired_ = conn["responsesRequiredToBeHealthy"] || 0;
   var onMessageReceived = this.connReceiver_(this.conn_);
   var onConnectionLost = this.disconnReceiver_(this.conn_);
   this.tx_ = this.conn_;
@@ -5445,7 +5445,7 @@ fb.realtime.Connection.prototype.start_ = function() {
   setTimeout(function() {
     self.conn_ && self.conn_.open(onMessageReceived, onConnectionLost)
   }, 0);
-  var healthyTimeout_ms = conn.healthyTimeout || 0;
+  var healthyTimeout_ms = conn["healthyTimeout"] || 0;
   if(healthyTimeout_ms > 0) {
     this.healthyTimeout_ = setTimeout(function() {
       self.healthyTimeout_ = null;
