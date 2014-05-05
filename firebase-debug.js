@@ -5643,7 +5643,7 @@ fb.realtime.Connection.prototype.tryStartUpgrade_ = function() {
 };
 fb.realtime.Connection.prototype.startUpgrade_ = function(conn) {
   this.secondaryConn_ = new conn(this.nextTransportId_(), this.repoInfo_, this.sessionId);
-  this.secondaryResponsesRequired_ = conn.responsesRequiredToBeHealthy || 0;
+  this.secondaryResponsesRequired_ = conn["responsesRequiredToBeHealthy"] || 0;
   var onMessage = this.connReceiver_(this.secondaryConn_);
   var onDisconnect = this.disconnReceiver_(this.secondaryConn_);
   this.secondaryConn_.open(onMessage, onDisconnect);
