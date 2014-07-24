@@ -1,4 +1,4 @@
-var COMPILED = false;
+/* Firebase v1.0.18 */ var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -810,8 +810,8 @@ goog.provide("fb.core.util.validation");
 goog.require("fb.util.obj");
 goog.require("fb.util.utf8");
 goog.require("fb.util.validation");
-fb.core.util.validation.INVALID_KEY_REGEX_ = /[\[\].#$\/]/;
-fb.core.util.validation.INVALID_PATH_REGEX_ = /[\[\].#$]/;
+fb.core.util.validation.INVALID_KEY_REGEX_ = /[\[\].#$\/\u0000-\u001F\u007F]/;
+fb.core.util.validation.INVALID_PATH_REGEX_ = /[\[\].#$\u0000-\u001F\u007F]/;
 fb.core.util.validation.MAX_LEAF_SIZE_ = 10 * 1024 * 1024;
 fb.core.util.validation.MAX_DEPTH_SIZE_ = 1E3;
 fb.core.util.validation.isValidKey = function(key) {
@@ -877,8 +877,8 @@ fb.core.util.validation.validateFirebaseObjectDataArg = function(fnName, argumen
   if (optional && !goog.isDef(data)) {
     return;
   }
-  if (!goog.isObject(data)) {
-    throw new Error(fb.util.validation.errorPrefix(fnName, argumentNumber, optional) + " must be an object containing " + "the children to replace.");
+  if (!goog.isObject(data) || goog.isArray(data)) {
+    throw new Error(fb.util.validation.errorPrefix(fnName, argumentNumber, optional) + " must be an Object containing " + "the children to replace.");
   }
   fb.core.util.validation.validateFirebaseDataArg(fnName, argumentNumber, data, optional);
 };
@@ -1042,6 +1042,13 @@ fb.api.Query.prototype.endAt = function(priority, name) {
   return new fb.api.Query(this.repo, this.path, this.itemLimit, this.startPriority, this.startName, priority, name);
 };
 goog.exportProperty(fb.api.Query.prototype, "endAt", fb.api.Query.prototype.endAt);
+fb.api.Query.prototype.equalTo = function(priority, name) {
+  fb.util.validation.validateArgCount("Query.equalTo", 1, 2, arguments.length);
+  fb.core.util.validation.validatePriority("Query.equalTo", 1, priority, false);
+  fb.core.util.validation.validateKey("Query.equalTo", 2, name, true);
+  return this.startAt(priority, name).endAt(priority, name);
+};
+goog.exportProperty(fb.api.Query.prototype, "equalTo", fb.api.Query.prototype.equalTo);
 fb.api.Query.prototype.queryObject = function() {
   var obj = {};
   if (goog.isDef(this.startPriority)) {
@@ -1169,6 +1176,9 @@ fb.core.util.Path.prototype.child = function(childPathObj) {
 fb.core.util.Path.prototype.isEmpty = function() {
   return this.pieceNum_ >= this.pieces_.length;
 };
+fb.core.util.Path.prototype.length = function() {
+  return this.pieces_.length - this.pieceNum_;
+};
 fb.core.util.Path.RelativePath = function(outerPath, innerPath) {
   var outer = outerPath.getFront(), inner = innerPath.getFront();
   if (outer === null) {
@@ -1182,15 +1192,17 @@ fb.core.util.Path.RelativePath = function(outerPath, innerPath) {
   }
 };
 fb.core.util.Path.prototype.contains = function(other) {
-  var i = 0;
-  if (this.pieces_.length > other.pieces_.length) {
+  var i = this.pieceNum_;
+  var j = other.pieceNum_;
+  if (this.length() > other.length()) {
     return false;
   }
   while (i < this.pieces_.length) {
-    if (this.pieces_[i] !== other.pieces_[i]) {
+    if (this.pieces_[i] !== other.pieces_[j]) {
       return false;
     }
     ++i;
+    ++j;
   }
   return true;
 };
@@ -1730,6 +1742,7 @@ fb.core.RepoInfo.prototype.toString = function() {
 };
 goog.provide("fb.constants");
 var NODE_CLIENT = false;
+var CLIENT_VERSION = "0.0.0";
 goog.provide("goog.crypt.Hash");
 goog.crypt.Hash = function() {
   this.blockSize = -1;
@@ -3630,7 +3643,7 @@ fb.core.util.parseURL = function(dataURL) {
       }
       namespace = namespace.toLowerCase();
     } else {
-      fb.core.util.fatal("Cannot parse Firebase url. Please use https:<YOUR FIREBASE>.firebaseio.com");
+      fb.core.util.fatal("Cannot parse Firebase url. Please use https://<YOUR FIREBASE>.firebaseio.com");
     }
   }
   if (!secure) {
@@ -4493,6 +4506,8 @@ fb.realtime.Transport.prototype.close = function() {
 };
 fb.realtime.Transport.prototype.send = function(data) {
 };
+fb.realtime.Transport.prototype.bytesReceived;
+fb.realtime.Transport.prototype.bytesSent;
 goog.provide("fb.core.util.NodePatches");
 (function() {
   if (NODE_CLIENT) {
@@ -4923,6 +4938,8 @@ fb.realtime.WebSocketConnection = function(connId, repoInfo, sessionId) {
   this.keepaliveTimer = null;
   this.frames = null;
   this.totalFrames = 0;
+  this.bytesSent = 0;
+  this.bytesReceived = 0;
   this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
   this.connURL = (repoInfo.secure ? "wss://" : "ws://") + repoInfo.internalHost + "/.ws?" + fb.realtime.Constants.VERSION_PARAM + "=" + fb.realtime.Constants.PROTOCOL_VERSION;
   if (repoInfo.needsQueryParam()) {
@@ -5017,6 +5034,7 @@ fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
     return;
   }
   var data = mess["data"];
+  this.bytesReceived += data.length;
   this.stats_.incrementCounter("bytes_received", data.length);
   this.resetKeepAlive();
   if (this.frames !== null) {
@@ -5031,6 +5049,7 @@ fb.realtime.WebSocketConnection.prototype.handleIncomingFrame = function(mess) {
 fb.realtime.WebSocketConnection.prototype.send = function(data) {
   this.resetKeepAlive();
   var dataStr = fb.util.json.stringify(data);
+  this.bytesSent += dataStr.length;
   this.stats_.incrementCounter("bytes_sent", dataStr.length);
   var dataSegs = fb.core.util.splitStringBySize(dataStr, WEBSOCKET_MAX_FRAME_SIZE);
   if (dataSegs.length > 1) {
@@ -5187,6 +5206,8 @@ fb.realtime.BrowserPollConnection = function(connId, repoInfo, sessionId) {
   this.connId = connId;
   this.log_ = fb.core.util.logWrapper(connId);
   this.repoInfo = repoInfo;
+  this.bytesSent = 0;
+  this.bytesReceived = 0;
   this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
   this.sessionId = sessionId;
   this.everConnected_ = false;
@@ -5315,6 +5336,7 @@ fb.realtime.BrowserPollConnection.prototype.close = function() {
 };
 fb.realtime.BrowserPollConnection.prototype.send = function(data) {
   var dataStr = fb.util.json.stringify(data);
+  this.bytesSent += dataStr.length;
   this.stats_.incrementCounter("bytes_sent", dataStr.length);
   var base64data = fb.core.util.base64Encode(dataStr);
   var dataSegs = fb.core.util.splitStringBySize(base64data, MAX_PAYLOAD_SIZE);
@@ -5337,7 +5359,9 @@ fb.realtime.BrowserPollConnection.prototype.addDisconnectPingFrame = function(id
   document.body.appendChild(this.myDisconnFrame);
 };
 fb.realtime.BrowserPollConnection.prototype.incrementIncomingBytes_ = function(args) {
-  this.stats_.incrementCounter("bytes_received", fb.util.json.stringify(args).length);
+  var bytesReceived = fb.util.json.stringify(args).length;
+  this.bytesReceived += bytesReceived;
+  this.stats_.incrementCounter("bytes_received", bytesReceived);
 };
 function FirebaseIFrameScriptHolder(commandCB, onMessageCB, onDisconnectCB, urlFn) {
   this.urlFn = urlFn;
@@ -5595,6 +5619,8 @@ goog.require("fb.realtime.Constants");
 goog.require("fb.realtime.TransportManager");
 var UPGRADE_TIMEOUT = 6E4;
 var DELAY_BEFORE_SENDING_EXTRA_REQUESTS = 5E3;
+var BYTES_SENT_HEALTHY_OVERRIDE = 10 * 1024;
+var BYTES_RECEIVED_HEALTHY_OVERRIDE = 100 * 1024;
 var REALTIME_STATE_CONNECTING = 0;
 var REALTIME_STATE_CONNECTED = 1;
 var REALTIME_STATE_DISCONNECTED = 2;
@@ -5642,8 +5668,18 @@ fb.realtime.Connection.prototype.start_ = function() {
     this.healthyTimeout_ = setTimeout(function() {
       self.healthyTimeout_ = null;
       if (!self.isHealthy_) {
-        self.log_("Closing unhealthy connection after timeout.");
-        self.close();
+        if (self.conn_ && self.conn_.bytesReceived > BYTES_RECEIVED_HEALTHY_OVERRIDE) {
+          self.log_("Connection exceeded healthy timeout but has received " + self.conn_.bytesReceived + " bytes.  Marking connection healthy.");
+          self.isHealthy_ = true;
+          self.conn_.markConnectionHealthy();
+        } else {
+          if (self.conn_ && self.conn_.bytesSent > BYTES_SENT_HEALTHY_OVERRIDE) {
+            self.log_("Connection exceeded healthy timeout but has sent " + self.conn_.bytesSent + " bytes.  Leaving connection alive.");
+          } else {
+            self.log_("Closing unhealthy connection after timeout.");
+            self.close();
+          }
+        }
       }
     }, healthyTimeout_ms);
   }
@@ -8553,6 +8589,7 @@ goog.exportProperty(fb.api.INTERNAL, "statsIncrementCounter", fb.api.INTERNAL.st
 fb.api.INTERNAL.dataUpdateCount = function(ref) {
   return ref.repo.dataUpdateCount;
 };
+goog.exportProperty(fb.api.INTERNAL, "dataUpdateCount", fb.api.INTERNAL.dataUpdateCount);
 fb.api.INTERNAL.interceptServerData = function(ref, callback) {
   return ref.repo.interceptServerData_(callback);
 };
@@ -8603,6 +8640,14 @@ goog.exportProperty(fb.api.OnDisconnect.prototype, "setWithPriority", fb.api.OnD
 fb.api.OnDisconnect.prototype.update = function(objectToMerge, opt_onComplete) {
   fb.util.validation.validateArgCount("Firebase.onDisconnect().update", 1, 2, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.onDisconnect().update", this.path_);
+  if (goog.isArray(objectToMerge)) {
+    var newObjectToMerge = {};
+    for (var i = 0;i < objectToMerge.length;++i) {
+      newObjectToMerge["" + i] = objectToMerge[i];
+    }
+    objectToMerge = newObjectToMerge;
+    fb.core.util.warn("Passing an Array to Firebase.onDisconnect().update() is deprecated. Use set() if you want to overwrite the " + "existing data, or an Object with integer keys if you really do want to only update some of the children.");
+  }
   fb.core.util.validation.validateFirebaseObjectDataArg("Firebase.onDisconnect().update", 1, objectToMerge, false);
   fb.util.validation.validateCallback("Firebase.onDisconnect().update", 2, opt_onComplete, true);
   this.repo_.onDisconnectUpdate(this.path_, objectToMerge, opt_onComplete);
@@ -8734,6 +8779,14 @@ Firebase.prototype.set = function(newVal, onComplete) {
 Firebase.prototype.update = function(objectToMerge, onComplete) {
   fb.util.validation.validateArgCount("Firebase.update", 1, 2, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.update", this.path);
+  if (goog.isArray(objectToMerge)) {
+    var newObjectToMerge = {};
+    for (var i = 0;i < objectToMerge.length;++i) {
+      newObjectToMerge["" + i] = objectToMerge[i];
+    }
+    objectToMerge = newObjectToMerge;
+    fb.core.util.warn("Passing an Array to Firebase.update() is deprecated. Use set() if you want to overwrite the existing data, or " + "an Object with integer keys if you really do want to only update some of the children.");
+  }
   fb.core.util.validation.validateFirebaseObjectDataArg("Firebase.update", 1, objectToMerge, false);
   fb.util.validation.validateCallback("Firebase.update", 2, onComplete, true);
   if (fb.util.obj.contains(objectToMerge, ".priority")) {
@@ -8852,6 +8905,7 @@ Firebase.enableLogging = function(logger, persistent) {
   }
 };
 Firebase.ServerValue = {"TIMESTAMP":{".sv":"timestamp"}};
+Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 
