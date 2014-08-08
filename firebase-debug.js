@@ -1,4 +1,4 @@
-/* Firebase v1.0.18 */ var COMPILED = false;
+/* Firebase v1.0.19 */ var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -3677,7 +3677,7 @@ fb.core.util.executeWhenDOMReady = function(fn) {
     var called = false;
     var wrappedFn = function() {
       if (!document.body) {
-        setTimeout(wrappedFn, 10);
+        setTimeout(wrappedFn, Math.floor(10));
         return;
       }
       if (!called) {
@@ -3872,7 +3872,7 @@ fb.core.util.exceptionGuard = function(fn) {
   } catch (e) {
     setTimeout(function() {
       throw e;
-    }, 0);
+    }, Math.floor(0));
   }
 };
 goog.provide("fb.core.snap.LeafNode");
@@ -4862,13 +4862,15 @@ fb.core.stats.StatsListener.prototype.get = function() {
   return delta;
 };
 goog.provide("fb.core.stats.StatsReporter");
-var FIRST_STATS_TIME = 30 * 1E3;
+var FIRST_STATS_MIN_TIME = 10 * 1E3;
+var FIRST_STATS_MAX_TIME = 30 * 1E3;
 var REPORT_STATS_INTERVAL = 5 * 60 * 1E3;
 fb.core.stats.StatsReporter = function(collection, connection) {
   this.statsToReport_ = {};
   this.statsListener_ = new fb.core.stats.StatsListener(collection);
   this.connection_ = connection;
-  setTimeout(goog.bind(this.reportStats_, this), 10 + Math.random() * 2 * FIRST_STATS_TIME);
+  var timeout = FIRST_STATS_MIN_TIME + (FIRST_STATS_MAX_TIME - FIRST_STATS_MIN_TIME) * Math.random();
+  setTimeout(goog.bind(this.reportStats_, this), Math.floor(timeout));
 };
 fb.core.stats.StatsReporter.prototype.includeStat = function(stat) {
   this.statsToReport_[stat] = true;
@@ -4886,7 +4888,7 @@ fb.core.stats.StatsReporter.prototype.reportStats_ = function() {
   if (haveStatsToReport) {
     this.connection_.reportStats(reportedStats);
   }
-  setTimeout(goog.bind(this.reportStats_, this), Math.random() * 2 * REPORT_STATS_INTERVAL);
+  setTimeout(goog.bind(this.reportStats_, this), Math.floor(Math.random() * 2 * REPORT_STATS_INTERVAL));
 };
 goog.provide("fb.core.stats.StatsManager");
 goog.require("fb.core.stats.StatsCollection");
@@ -5094,7 +5096,7 @@ fb.realtime.WebSocketConnection.prototype.resetKeepAlive = function() {
       self.mySock.send("0");
     }
     self.resetKeepAlive();
-  }, WEBSOCKET_KEEPALIVE_INTERVAL);
+  }, Math.floor(WEBSOCKET_KEEPALIVE_INTERVAL));
 };
 goog.provide("fb.realtime.polling.PacketReceiver");
 fb.realtime.polling.PacketReceiver = function(onMessage) {
@@ -5234,7 +5236,7 @@ fb.realtime.BrowserPollConnection.prototype.open = function(onMessage, onDisconn
     self.log_("Timed out trying to connect.");
     self.onClosed_();
     self.connectTimeoutTimer_ = null;
-  }, LP_CONNECT_TIMEOUT);
+  }, Math.floor(LP_CONNECT_TIMEOUT));
   fb.core.util.executeWhenDOMReady(function() {
     if (self.isClosed_) {
       return;
@@ -5437,7 +5439,7 @@ FirebaseIFrameScriptHolder.prototype.close = function() {
         document.body.removeChild(self.myIFrame);
         self.myIFrame = null;
       }
-    }, 0);
+    }, Math.floor(0));
   }
   if (NODE_CLIENT && this.myID) {
     var urlParams = {};
@@ -5500,7 +5502,7 @@ FirebaseIFrameScriptHolder.prototype.addLongPollTag_ = function(url, serial) {
     self.outstandingRequests.remove(serial);
     self.newRequest_();
   };
-  var keepaliveTimeout = setTimeout(doNewRequest, KEEPALIVE_REQUEST_INTERVAL);
+  var keepaliveTimeout = setTimeout(doNewRequest, Math.floor(KEEPALIVE_REQUEST_INTERVAL));
   var readyStateCB = function() {
     clearTimeout(keepaliveTimeout);
     doNewRequest();
@@ -5539,7 +5541,7 @@ FirebaseIFrameScriptHolder.prototype.addTag = function(url, loadCB) {
         self.myIFrame.doc.body.appendChild(newScript);
       } catch (e) {
       }
-    }, 1);
+    }, Math.floor(1));
   }
 };
 if (typeof NODE_CLIENT !== "undefined" && NODE_CLIENT) {
@@ -5662,7 +5664,7 @@ fb.realtime.Connection.prototype.start_ = function() {
   var self = this;
   setTimeout(function() {
     self.conn_ && self.conn_.open(onMessageReceived, onConnectionLost);
-  }, 0);
+  }, Math.floor(0));
   var healthyTimeout_ms = conn["healthyTimeout"] || 0;
   if (healthyTimeout_ms > 0) {
     this.healthyTimeout_ = setTimeout(function() {
@@ -5681,7 +5683,7 @@ fb.realtime.Connection.prototype.start_ = function() {
           }
         }
       }
-    }, healthyTimeout_ms);
+    }, Math.floor(healthyTimeout_ms));
   }
 };
 fb.realtime.Connection.prototype.nextTransportId_ = function() {
@@ -5881,7 +5883,7 @@ fb.realtime.Connection.prototype.startUpgrade_ = function(conn) {
       self.log_("Timed out trying to upgrade.");
       self.secondaryConn_.close();
     }
-  }, UPGRADE_TIMEOUT);
+  }, Math.floor(UPGRADE_TIMEOUT));
 };
 fb.realtime.Connection.prototype.onReset_ = function(host) {
   this.log_("Reset packet received.  New host: " + host);
@@ -5908,7 +5910,7 @@ fb.realtime.Connection.prototype.onConnectionEstablished_ = function(conn, times
   } else {
     setTimeout(function() {
       self.sendPingOnPrimaryIfNecessary_();
-    }, DELAY_BEFORE_SENDING_EXTRA_REQUESTS);
+    }, Math.floor(DELAY_BEFORE_SENDING_EXTRA_REQUESTS));
   }
 };
 fb.realtime.Connection.prototype.sendPingOnPrimaryIfNecessary_ = function() {
@@ -6176,7 +6178,7 @@ fb.core.PersistentConnection.prototype.sendOnDisconnect_ = function(action, path
     if (opt_onComplete) {
       setTimeout(function() {
         opt_onComplete(response["s"], response["d"]);
-      }, 0);
+      }, Math.floor(0));
     }
   });
 };
@@ -6283,7 +6285,7 @@ fb.core.PersistentConnection.prototype.scheduleConnect_ = function(timeout) {
   this.establishConnectionTimer_ = setTimeout(function() {
     self.establishConnectionTimer_ = null;
     self.establishConnection_();
-  }, timeout);
+  }, Math.floor(timeout));
 };
 fb.core.PersistentConnection.prototype.onVisible_ = function(visible) {
   if (visible && !this.visible_ && this.reconnectDelay_ === this.maxReconnectDelay_) {
@@ -7975,7 +7977,6 @@ fb.core.Repo.prototype.update = function(path, childrenToMerge, onComplete) {
   }
   var self = this;
   this.connection_.merge(path.toString(), childrenToMerge, function(status, errorReason) {
-    fb.core.util.assert(status === "ok" || status === "permission_denied", "merge at " + path + " failed.");
     var success = status === "ok";
     if (!success) {
       fb.core.util.warn("update at " + path + " failed: " + status);
@@ -8359,7 +8360,7 @@ fb.core.Repo.prototype.rerunTransactionQueue_ = function(queue, path) {
     if (abortTransaction) {
       queue[i].status = fb.core.TransactionStatus.COMPLETED;
       (function(unwatcher) {
-        setTimeout(unwatcher, 0);
+        setTimeout(unwatcher, Math.floor(0));
       })(queue[i].unwatcher);
       if (queue[i].onComplete) {
         var ref = new Firebase(this, queue[i].path);
