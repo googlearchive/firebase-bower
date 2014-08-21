@@ -1,4 +1,4 @@
-/* Firebase v1.0.19 */ var COMPILED = false;
+/* Firebase v1.0.20 */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -8909,4 +8909,4 @@ Firebase.ServerValue = {"TIMESTAMP":{".sv":"timestamp"}};
 Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
-
+; Firebase.SDK_VERSION='1.0.20';
