@@ -1,4 +1,4 @@
-/* Firebase v1.0.20 */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/* Firebase v1.0.21 */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -1743,162 +1743,184 @@ fb.core.RepoInfo.prototype.toString = function() {
 goog.provide("fb.constants");
 var NODE_CLIENT = false;
 var CLIENT_VERSION = "0.0.0";
-goog.provide("goog.crypt.Hash");
-goog.crypt.Hash = function() {
-  this.blockSize = -1;
-};
-goog.crypt.Hash.prototype.reset = goog.abstractMethod;
-goog.crypt.Hash.prototype.update = goog.abstractMethod;
-goog.crypt.Hash.prototype.digest = goog.abstractMethod;
-goog.provide("goog.crypt.Sha1");
-goog.require("goog.crypt.Hash");
-goog.crypt.Sha1 = function() {
-  goog.crypt.Sha1.base(this, "constructor");
-  this.blockSize = 512 / 8;
-  this.chain_ = [];
-  this.buf_ = [];
-  this.W_ = [];
-  this.pad_ = [];
-  this.pad_[0] = 128;
-  for (var i = 1;i < this.blockSize;++i) {
-    this.pad_[i] = 0;
+goog.provide("sjcl");
+"use strict";
+sjcl = {cipher:{}, hash:{}, keyexchange:{}, mode:{}, misc:{}, codec:{}, exception:{corrupt:function(a) {
+  this.toString = function() {
+    return "CORRUPT: " + this.message;
+  };
+  this.message = a;
+}, invalid:function(a) {
+  this.toString = function() {
+    return "INVALID: " + this.message;
+  };
+  this.message = a;
+}, bug:function(a) {
+  this.toString = function() {
+    return "BUG: " + this.message;
+  };
+  this.message = a;
+}, notReady:function(a) {
+  this.toString = function() {
+    return "NOT READY: " + this.message;
+  };
+  this.message = a;
+}}};
+sjcl.bitArray = {bitSlice:function(a, b, c) {
+  a = sjcl.bitArray.e(a.slice(b / 32), 32 - (b & 31)).slice(1);
+  return void 0 === c ? a : sjcl.bitArray.clamp(a, c - b);
+}, extract:function(a, b, c) {
+  var d = Math.floor(-b - c & 31);
+  return((b + c - 1 ^ b) & -32 ? a[b / 32 | 0] << 32 - d ^ a[b / 32 + 1 | 0] >>> d : a[b / 32 | 0] >>> d) & (1 << c) - 1;
+}, concat:function(a, b) {
+  if (0 === a.length || 0 === b.length) {
+    return a.concat(b);
   }
-  this.inbuf_ = 0;
-  this.total_ = 0;
+  var c = a[a.length - 1], d = sjcl.bitArray.getPartial(c);
+  return 32 === d ? a.concat(b) : sjcl.bitArray.e(b, d, c | 0, a.slice(0, a.length - 1));
+}, bitLength:function(a) {
+  var b = a.length;
+  return 0 === b ? 0 : 32 * (b - 1) + sjcl.bitArray.getPartial(a[b - 1]);
+}, clamp:function(a, b) {
+  if (32 * a.length < b) {
+    return a;
+  }
+  a = a.slice(0, Math.ceil(b / 32));
+  var c = a.length;
+  b &= 31;
+  0 < c && b && (a[c - 1] = sjcl.bitArray.partial(b, a[c - 1] & 2147483648 >> b - 1, 1));
+  return a;
+}, partial:function(a, b, c) {
+  return 32 === a ? b : (c ? b | 0 : b << 32 - a) + 1099511627776 * a;
+}, getPartial:function(a) {
+  return Math.round(a / 1099511627776) || 32;
+}, equal:function(a, b) {
+  if (sjcl.bitArray.bitLength(a) !== sjcl.bitArray.bitLength(b)) {
+    return!1;
+  }
+  var c = 0, d;
+  for (d = 0;d < a.length;d++) {
+    c |= a[d] ^ b[d];
+  }
+  return 0 === c;
+}, e:function(a, b, c, d) {
+  var e;
+  e = 0;
+  for (void 0 === d && (d = []);32 <= b;b -= 32) {
+    d.push(c), c = 0;
+  }
+  if (0 === b) {
+    return d.concat(a);
+  }
+  for (e = 0;e < a.length;e++) {
+    d.push(c | a[e] >>> b), c = a[e] << 32 - b;
+  }
+  e = a.length ? a[a.length - 1] : 0;
+  a = sjcl.bitArray.getPartial(e);
+  d.push(sjcl.bitArray.partial(b + a & 31, 32 < b + a ? c : d.pop(), 1));
+  return d;
+}, h:function(a, b) {
+  return[a[0] ^ b[0], a[1] ^ b[1], a[2] ^ b[2], a[3] ^ b[3]];
+}, byteswapM:function(a) {
+  var b, c;
+  for (b = 0;b < a.length;++b) {
+    c = a[b], a[b] = c >>> 24 | c >>> 8 & 65280 | (c & 65280) << 8 | c << 24;
+  }
+  return a;
+}};
+sjcl.codec.utf8String = {fromBits:function(a) {
+  var b = "", c = sjcl.bitArray.bitLength(a), d, e;
+  for (d = 0;d < c / 8;d++) {
+    0 === (d & 3) && (e = a[d / 4]), b += String.fromCharCode(e >>> 24), e <<= 8;
+  }
+  return decodeURIComponent(escape(b));
+}, toBits:function(a) {
+  a = unescape(encodeURIComponent(a));
+  var b = [], c, d = 0;
+  for (c = 0;c < a.length;c++) {
+    d = d << 8 | a.charCodeAt(c), 3 === (c & 3) && (b.push(d), d = 0);
+  }
+  c & 3 && b.push(sjcl.bitArray.partial(8 * (c & 3), d));
+  return b;
+}};
+sjcl.codec.base64 = {d:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", fromBits:function(a, b, c) {
+  var d = "", e = 0, g = sjcl.codec.base64.d, f = 0, h = sjcl.bitArray.bitLength(a);
+  c && (g = g.substr(0, 62) + "-_");
+  for (c = 0;6 * d.length < h;) {
+    d += g.charAt((f ^ a[c] >>> e) >>> 26), 6 > e ? (f = a[c] << 6 - e, e += 26, c++) : (f <<= 6, e -= 6);
+  }
+  for (;d.length & 3 && !b;) {
+    d += "=";
+  }
+  return d;
+}, toBits:function(a, b) {
+  a = a.replace(/\s|=/g, "");
+  var c = [], d, e = 0, g = sjcl.codec.base64.d, f = 0, h;
+  b && (g = g.substr(0, 62) + "-_");
+  for (d = 0;d < a.length;d++) {
+    h = g.indexOf(a.charAt(d));
+    if (0 > h) {
+      throw new sjcl.exception.invalid("this isn't base64!");
+    }
+    26 < e ? (e -= 26, c.push(f ^ h >>> e), f = h << 32 - e) : (e += 6, f ^= h << 32 - e);
+  }
+  e & 56 && c.push(sjcl.bitArray.partial(e & 56, f, 1));
+  return c;
+}};
+sjcl.codec.base64url = {fromBits:function(a) {
+  return sjcl.codec.base64.fromBits(a, 1, 1);
+}, toBits:function(a) {
+  return sjcl.codec.base64.toBits(a, 1);
+}};
+sjcl.hash.sha1 = function(a) {
+  a ? (this.c = a.c.slice(0), this.b = a.b.slice(0), this.a = a.a) : this.reset();
+};
+sjcl.hash.sha1.hash = function(a) {
+  return(new sjcl.hash.sha1).update(a).finalize();
+};
+sjcl.hash.sha1.prototype = {blockSize:512, reset:function() {
+  this.c = this.f.slice(0);
+  this.b = [];
+  this.a = 0;
+  return this;
+}, update:function(a) {
+  "string" === typeof a && (a = sjcl.codec.utf8String.toBits(a));
+  var b, c = this.b = sjcl.bitArray.concat(this.b, a);
+  b = this.a;
+  a = this.a = b + sjcl.bitArray.bitLength(a);
+  for (b = this.blockSize + b & -this.blockSize;b <= a;b += this.blockSize) {
+    n(this, c.splice(0, 16));
+  }
+  return this;
+}, finalize:function() {
+  var a, b = this.b, c = this.c, b = sjcl.bitArray.concat(b, [sjcl.bitArray.partial(1, 1)]);
+  for (a = b.length + 2;a & 15;a++) {
+    b.push(0);
+  }
+  b.push(Math.floor(this.a / 4294967296));
+  for (b.push(this.a | 0);b.length;) {
+    n(this, b.splice(0, 16));
+  }
   this.reset();
-};
-goog.inherits(goog.crypt.Sha1, goog.crypt.Hash);
-goog.crypt.Sha1.prototype.reset = function() {
-  this.chain_[0] = 1732584193;
-  this.chain_[1] = 4023233417;
-  this.chain_[2] = 2562383102;
-  this.chain_[3] = 271733878;
-  this.chain_[4] = 3285377520;
-  this.inbuf_ = 0;
-  this.total_ = 0;
-};
-goog.crypt.Sha1.prototype.compress_ = function(buf, opt_offset) {
-  if (!opt_offset) {
-    opt_offset = 0;
+  return c;
+}, f:[1732584193, 4023233417, 2562383102, 271733878, 3285377520], g:[1518500249, 1859775393, 2400959708, 3395469782]};
+function n(a, b) {
+  var c, d, e, g, f, h, m, l = b.slice(0), k = a.c;
+  e = k[0];
+  g = k[1];
+  f = k[2];
+  h = k[3];
+  m = k[4];
+  for (c = 0;79 >= c;c++) {
+    16 <= c && (l[c] = (l[c - 3] ^ l[c - 8] ^ l[c - 14] ^ l[c - 16]) << 1 | (l[c - 3] ^ l[c - 8] ^ l[c - 14] ^ l[c - 16]) >>> 31), d = 19 >= c ? g & f | ~g & h : 39 >= c ? g ^ f ^ h : 59 >= c ? g & f | g & h | f & h : 79 >= c ? g ^ f ^ h : void 0, d = (e << 5 | e >>> 27) + d + m + l[c] + a.g[Math.floor(c / 20)] | 0, m = h, h = f, f = g << 30 | g >>> 2, g = e, e = d;
   }
-  var W = this.W_;
-  if (goog.isString(buf)) {
-    for (var i = 0;i < 16;i++) {
-      W[i] = buf.charCodeAt(opt_offset) << 24 | buf.charCodeAt(opt_offset + 1) << 16 | buf.charCodeAt(opt_offset + 2) << 8 | buf.charCodeAt(opt_offset + 3);
-      opt_offset += 4;
-    }
-  } else {
-    for (var i = 0;i < 16;i++) {
-      W[i] = buf[opt_offset] << 24 | buf[opt_offset + 1] << 16 | buf[opt_offset + 2] << 8 | buf[opt_offset + 3];
-      opt_offset += 4;
-    }
-  }
-  for (var i = 16;i < 80;i++) {
-    var t = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
-    W[i] = (t << 1 | t >>> 31) & 4294967295;
-  }
-  var a = this.chain_[0];
-  var b = this.chain_[1];
-  var c = this.chain_[2];
-  var d = this.chain_[3];
-  var e = this.chain_[4];
-  var f, k;
-  for (var i = 0;i < 80;i++) {
-    if (i < 40) {
-      if (i < 20) {
-        f = d ^ b & (c ^ d);
-        k = 1518500249;
-      } else {
-        f = b ^ c ^ d;
-        k = 1859775393;
-      }
-    } else {
-      if (i < 60) {
-        f = b & c | d & (b | c);
-        k = 2400959708;
-      } else {
-        f = b ^ c ^ d;
-        k = 3395469782;
-      }
-    }
-    var t = (a << 5 | a >>> 27) + f + e + k + W[i] & 4294967295;
-    e = d;
-    d = c;
-    c = (b << 30 | b >>> 2) & 4294967295;
-    b = a;
-    a = t;
-  }
-  this.chain_[0] = this.chain_[0] + a & 4294967295;
-  this.chain_[1] = this.chain_[1] + b & 4294967295;
-  this.chain_[2] = this.chain_[2] + c & 4294967295;
-  this.chain_[3] = this.chain_[3] + d & 4294967295;
-  this.chain_[4] = this.chain_[4] + e & 4294967295;
-};
-goog.crypt.Sha1.prototype.update = function(bytes, opt_length) {
-  if (!goog.isDef(opt_length)) {
-    opt_length = bytes.length;
-  }
-  var lengthMinusBlock = opt_length - this.blockSize;
-  var n = 0;
-  var buf = this.buf_;
-  var inbuf = this.inbuf_;
-  while (n < opt_length) {
-    if (inbuf == 0) {
-      while (n <= lengthMinusBlock) {
-        this.compress_(bytes, n);
-        n += this.blockSize;
-      }
-    }
-    if (goog.isString(bytes)) {
-      while (n < opt_length) {
-        buf[inbuf] = bytes.charCodeAt(n);
-        ++inbuf;
-        ++n;
-        if (inbuf == this.blockSize) {
-          this.compress_(buf);
-          inbuf = 0;
-          break;
-        }
-      }
-    } else {
-      while (n < opt_length) {
-        buf[inbuf] = bytes[n];
-        ++inbuf;
-        ++n;
-        if (inbuf == this.blockSize) {
-          this.compress_(buf);
-          inbuf = 0;
-          break;
-        }
-      }
-    }
-  }
-  this.inbuf_ = inbuf;
-  this.total_ += opt_length;
-};
-goog.crypt.Sha1.prototype.digest = function() {
-  var digest = [];
-  var totalBits = this.total_ * 8;
-  if (this.inbuf_ < 56) {
-    this.update(this.pad_, 56 - this.inbuf_);
-  } else {
-    this.update(this.pad_, this.blockSize - (this.inbuf_ - 56));
-  }
-  for (var i = this.blockSize - 1;i >= 56;i--) {
-    this.buf_[i] = totalBits & 255;
-    totalBits /= 256;
-  }
-  this.compress_(this.buf_);
-  var n = 0;
-  for (var i = 0;i < 5;i++) {
-    for (var j = 24;j >= 0;j -= 8) {
-      digest[n] = this.chain_[i] >> j & 255;
-      ++n;
-    }
-  }
-  return digest;
-};
-goog.provide("goog.dom.NodeType");
+  k[0] = k[0] + e | 0;
+  k[1] = k[1] + g | 0;
+  k[2] = k[2] + f | 0;
+  k[3] = k[3] + h | 0;
+  k[4] = k[4] + m | 0;
+}
+;goog.provide("goog.dom.NodeType");
 goog.dom.NodeType = {ELEMENT:1, ATTRIBUTE:2, TEXT:3, CDATA_SECTION:4, ENTITY_REFERENCE:5, ENTITY:6, PROCESSING_INSTRUCTION:7, COMMENT:8, DOCUMENT:9, DOCUMENT_TYPE:10, DOCUMENT_FRAGMENT:11, NOTATION:12};
 goog.provide("goog.debug.Error");
 goog.debug.Error = function(opt_msg) {
@@ -3504,9 +3526,8 @@ goog.require("fb.constants");
 goog.require("fb.core.RepoInfo");
 goog.require("fb.core.storage");
 goog.require("fb.util.json");
-goog.require("goog.crypt");
-goog.require("goog.crypt.Sha1");
 goog.require("goog.crypt.base64");
+goog.require("sjcl");
 fb.core.util.LUIDGenerator = function() {
   var id = 1;
   return function() {
@@ -3542,11 +3563,7 @@ fb.core.util.base64DecodeIfNativeSupport = function(str) {
   return null;
 };
 fb.core.util.sha1 = function(str) {
-  var utf8Bytes = fb.util.utf8.stringToByteArray(str);
-  var sha1 = new goog.crypt.Sha1;
-  sha1.update(utf8Bytes);
-  var sha1Bytes = sha1.digest();
-  return goog.crypt.base64.encodeByteArray(sha1Bytes);
+  return sjcl.codec.base64.fromBits(sjcl.hash.sha1.hash(str));
 };
 fb.core.util.buildLogMessage_ = function(var_args) {
   var message = "";
@@ -8909,4 +8926,4 @@ Firebase.ServerValue = {"TIMESTAMP":{".sv":"timestamp"}};
 Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
-; Firebase.SDK_VERSION='1.0.20';
+; Firebase.SDK_VERSION='1.0.21';
