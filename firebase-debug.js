@@ -1,9 +1,9 @@
-/* Firebase v1.0.23 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var global = this; (function(){"use strict";function m(c,b){if(0===c.length||0===b.length)return c.concat(b);var a=c[c.length-1],d=Math.round(a/1099511627776)||32,e;if(32===d)e=c.concat(b);else{e=b;var a=a|0,f=c.slice(0,c.length-1),g;for(void 0===f&&(f=[]);32<=d;d-=32)f.push(a),a=0;if(0===d)e=f.concat(e);else{for(g=0;g<e.length;g++)f.push(a|e[g]>>>d),a=e[g]<<32-d;g=e.length?e[e.length-1]:0;e=Math.round(g/1099511627776)||32;f.push(n(d+e&31,32<d+e?a:f.pop(),1));e=f}}return e}
+/* Firebase v1.0.24 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var scope = this; (function(){"use strict";function m(c,b){if(0===c.length||0===b.length)return c.concat(b);var a=c[c.length-1],d=Math.round(a/1099511627776)||32,e;if(32===d)e=c.concat(b);else{e=b;var a=a|0,f=c.slice(0,c.length-1),g;for(void 0===f&&(f=[]);32<=d;d-=32)f.push(a),a=0;if(0===d)e=f.concat(e);else{for(g=0;g<e.length;g++)f.push(a|e[g]>>>d),a=e[g]<<32-d;g=e.length?e[e.length-1]:0;e=Math.round(g/1099511627776)||32;f.push(n(d+e&31,32<d+e?a:f.pop(),1));e=f}}return e}
 function p(c){var b=c.length;return 0===b?0:32*(b-1)+(Math.round(c[b-1]/1099511627776)||32)}function n(c,b,a){return 32===c?b:(a?b|0:b<<32-c)+1099511627776*c}function r(c){c?(this.c=c.c.slice(0),this.b=c.b.slice(0),this.a=c.a):this.reset()}
 r.prototype={d:512,reset:function(){this.c=this.e.slice(0);this.b=[];this.a=0;return this},update:function(c){if("string"===typeof c){c=unescape(encodeURIComponent(c));var b=[],a,d=0;for(a=0;a<c.length;a++)d=d<<8|c.charCodeAt(a),3===(a&3)&&(b.push(d),d=0);a&3&&b.push(n(8*(a&3),d));c=b}a=this.b=m(this.b,c);b=this.a;c=this.a=b+p(c);for(b=this.d+b&-this.d;b<=c;b+=this.d)s(this,a.splice(0,16));return this},e:[1732584193,4023233417,2562383102,271733878,3285377520],f:[1518500249,1859775393,2400959708,3395469782]};
 function s(c,b){var a,d,e,f,g,l,q,k=b.slice(0),h=c.c;e=h[0];f=h[1];g=h[2];l=h[3];q=h[4];for(a=0;79>=a;a++)16<=a&&(k[a]=(k[a-3]^k[a-8]^k[a-14]^k[a-16])<<1|(k[a-3]^k[a-8]^k[a-14]^k[a-16])>>>31),d=19>=a?f&g|~f&l:39>=a?f^g^l:59>=a?f&g|f&l|g&l:79>=a?f^g^l:void 0,d=(e<<5|e>>>27)+d+q+k[a]+c.f[Math.floor(a/20)]|0,q=l,l=g,g=f<<30|f>>>2,f=e,e=d;h[0]=h[0]+e|0;h[1]=h[1]+f|0;h[2]=h[2]+g|0;h[3]=h[3]+l|0;h[4]=h[4]+q|0}
 function t(c){var b=(new r).update(c),a,d=b.b;c=b.c;d=m(d,[n(1,1)]);for(a=d.length+2;a&15;a++)d.push(0);d.push(Math.floor(b.a/4294967296));for(d.push(b.a|0);d.length;)s(b,d.splice(0,16));b.reset();var e,b="";a=0;var d="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",f=0,g=p(c);e&&(d=d.substr(0,62)+"-_");for(e=0;6*b.length<g;)b+=d.charAt((f^c[e]>>>a)>>>26),6>a?(f=c[e]<<6-a,a+=26,e++):(f<<=6,a-=6);for(;b.length&3;)b+="=";return b}var u=["sjclHashToBase64"],v=this;
-u[0]in v||!v.execScript||v.execScript("var "+u[0]);for(var w;u.length&&(w=u.shift());)u.length||void 0===t?v=v[w]?v[w]:v[w]={}:v[w]=t;}).bind(global)(); var COMPILED = false;
+u[0]in v||!v.execScript||v.execScript("var "+u[0]);for(var w;u.length&&(w=u.shift());)u.length||void 0===t?v=v[w]?v[w]:v[w]={}:v[w]=t;}).apply(scope); var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -8762,4 +8762,4 @@ Firebase.ServerValue = {"TIMESTAMP":{".sv":"timestamp"}};
 Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
-; Firebase.SDK_VERSION='1.0.23';
+; Firebase.SDK_VERSION='1.0.24';
