@@ -1,4 +1,4 @@
-/*! @license Firebase v1.1.1 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v1.1.2 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -5027,9 +5027,19 @@ fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
   this.onDisconnect = onDisconn;
   this.onMessage = onMess;
   this.log_("Websocket connecting to " + this.connURL);
-  this.mySock = new fb.WebSocket(this.connURL);
   this.everConnected_ = false;
   fb.core.storage.PersistentStorage.set("previous_websocket_failure", true);
+  try {
+    this.mySock = new fb.WebSocket(this.connURL);
+  } catch (e) {
+    this.log_("Error instantiating WebSocket.");
+    var error = e.message || e.data;
+    if (error) {
+      this.log_(error);
+    }
+    this.onClosed_();
+    return;
+  }
   var self = this;
   this.mySock.onopen = function() {
     self.log_("Websocket connected.");
@@ -10068,4 +10078,4 @@ Firebase.ServerValue = {"TIMESTAMP":{".sv":"timestamp"}};
 Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
-; Firebase.SDK_VERSION='1.1.1';
+; Firebase.SDK_VERSION='1.1.2';
