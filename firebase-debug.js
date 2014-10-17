@@ -1,4 +1,4 @@
-/*! @license Firebase v1.2.0-beta.1 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v1.2.0-beta.2 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -3094,6 +3094,13 @@ fb.core.view.QueryParams.INDEX = "i";
 fb.core.view.QueryParams.DEFAULT = new fb.core.view.QueryParams;
 fb.core.view.QueryParams.prototype.hasStart = function() {
   return this.startSet_;
+};
+fb.core.view.QueryParams.prototype.isViewFromLeft = function() {
+  if (this.viewFrom_ === "") {
+    return this.startSet_;
+  } else {
+    return this.viewFrom_ === "l";
+  }
 };
 fb.core.view.QueryParams.prototype.getIndexStartValue = function() {
   fb.core.util.assert(this.startSet_, "Only valid if start has been set");
@@ -9279,7 +9286,7 @@ goog.provide("fb.core.view.LimitedViewProcessor");
 goog.require("fb.core.view.RangedViewProcessor");
 fb.core.view.LimitedViewProcessor = function(params) {
   fb.core.view.RangedViewProcessor.call(this, params);
-  this.reverse_ = !params.hasStart();
+  this.reverse_ = !params.isViewFromLeft();
   this.itemLimit_ = params.getLimit();
 };
 goog.inherits(fb.core.view.LimitedViewProcessor, fb.core.view.RangedViewProcessor);
@@ -12058,4 +12065,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='1.2.0-beta.1';
+; Firebase.SDK_VERSION='1.2.0-beta.2';
