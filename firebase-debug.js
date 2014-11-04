@@ -1,4 +1,4 @@
-/*! @license Firebase v2.0.0 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.0.1 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -5357,7 +5357,7 @@ fb.api.DataSnapshot.prototype.hasChildren = function() {
 };
 goog.exportProperty(fb.api.DataSnapshot.prototype, "hasChildren", fb.api.DataSnapshot.prototype.hasChildren);
 fb.api.DataSnapshot.prototype.name = function() {
-  fb.core.util.warn("Firebase.DataSnapshot.key() being deprecated. " + "Please use Firebase.DataSnapshot.key() instead.");
+  fb.core.util.warn("Firebase.DataSnapshot.name() being deprecated. " + "Please use Firebase.DataSnapshot.key() instead.");
   fb.util.validation.validateArgCount("Firebase.DataSnapshot.name", 0, 0, arguments.length);
   return this.key();
 };
@@ -11822,7 +11822,7 @@ if (NODE_CLIENT) {
   module["exports"] = Firebase;
 }
 Firebase.prototype.name = function() {
-  fb.core.util.warn("Firebase.key() being deprecated. Please use Firebase.key() instead.");
+  fb.core.util.warn("Firebase.name() being deprecated. Please use Firebase.key() instead.");
   fb.util.validation.validateArgCount("Firebase.name", 0, 0, arguments.length);
   return this.key();
 };
@@ -12101,4 +12101,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.0.0';
+; Firebase.SDK_VERSION='2.0.1';
