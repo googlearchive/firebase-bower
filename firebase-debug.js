@@ -1,4 +1,4 @@
-/*! @license Firebase v2.0.1 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.0.2 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -3456,7 +3456,7 @@ fb.core.snap.Index.Fallback = Object.create(null);
 fb.core.snap.Index.prototype.compare = goog.abstractMethod;
 fb.core.snap.Index.prototype.isDefinedOn = goog.abstractMethod;
 fb.core.snap.Index.prototype.getCompare = function() {
-  return this.compare.bind(this);
+  return goog.bind(this.compare, this);
 };
 fb.core.snap.Index.prototype.indexedValueChanged = function(oldNode, newNode) {
   var oldWrapped = new fb.core.snap.NamedNode(fb.core.util.MIN_NAME, oldNode);
@@ -9179,7 +9179,7 @@ fb.core.view.ViewProcessor.prototype.applyServerMerge = function(cache, path, ch
 fb.core.view.ViewProcessor.prototype.listenComplete = function(cache, changePath, writesCache, serverCache) {
   this.assertIndexed(cache);
   var serverNode = cache.getServerCache() || fb.core.snap.EMPTY_NODE;
-  return this.applyServerOverwrite(cache, changePath, serverNode, writesCache, serverCache, false);
+  return this.applyServerOverwrite(cache, changePath, serverNode.getChild(changePath), writesCache, serverCache, false);
 };
 fb.core.view.ViewProcessor.prototype.updateSingleChild = function(oldCache, childName, snap, serverSnap, serverChildren, writesCache, serverCache) {
   var newEventSnap = oldCache.eventSnap;
@@ -9626,8 +9626,17 @@ fb.core.view.View = function(query, initialCache) {
 fb.core.view.View.prototype.getQuery = function() {
   return this.query_;
 };
-fb.core.view.View.prototype.getCompleteServerCache = function() {
-  return this.cache_.getCompleteServerCache();
+fb.core.view.View.prototype.getServerCache = function() {
+  return this.cache_.getServerCache();
+};
+fb.core.view.View.prototype.getCompleteServerCache = function(path) {
+  var cache = this.cache_.getCompleteServerCache();
+  if (cache) {
+    if (this.query_.getQueryParams().loadsAllData() || !path.isEmpty() && !cache.getImmediateChild(path.getFront()).isEmpty()) {
+      return cache.getChild(path);
+    }
+  }
+  return null;
 };
 fb.core.view.View.prototype.isEmpty = function() {
   return this.eventRegistrations_.length === 0;
@@ -9676,12 +9685,19 @@ fb.core.view.View.prototype.applyOperation = function(operation, writesCache, se
   var newCache = this.processor_.applyOperation(oldCache, operation, writesCache, serverCache);
   this.processor_.assertIndexed(newCache);
   this.cache_ = newCache;
+  var newEventCache;
   if (newCache.getEventCache() !== oldCache.getEventCache()) {
     var changes = this.differ_.diff(oldCache, newCache, operation.path);
-    var newEventCache = (newCache.getEventCache());
+    newEventCache = (newCache.getEventCache());
     return this.generateEventsForChanges_(changes, newEventCache);
   } else {
-    return[];
+    if (newCache.isComplete() && !oldCache.isComplete()) {
+      fb.core.util.assert(newCache.getEventCache() === oldCache.getEventCache(), "Caches should be the same.");
+      newEventCache = (newCache.getEventCache());
+      return this.generateEventsForChanges_([new fb.core.view.Change("value", newEventCache)], newEventCache);
+    } else {
+      return[];
+    }
   }
 };
 fb.core.view.View.prototype.getInitialEvents = function(eventRegistration) {
@@ -10011,14 +10027,11 @@ fb.core.SyncPoint.prototype.getQueryViews = function() {
   });
 };
 fb.core.SyncPoint.prototype.getCompleteServerCache = function(path) {
-  var view = this.getCompleteView();
-  if (view != null) {
-    var serverCache = view.getCompleteServerCache();
-    if (serverCache) {
-      return serverCache.getChild(path);
-    }
-  }
-  return null;
+  var serverCache = null;
+  goog.object.forEach(this.views_, function(view) {
+    serverCache = serverCache || view.getCompleteServerCache(path);
+  });
+  return serverCache;
 };
 fb.core.SyncPoint.prototype.viewForQuery = function(query) {
   var params = query.getQueryParams();
@@ -10757,7 +10770,7 @@ fb.core.SyncTree.prototype.createListenerForView_ = function(view) {
   var query = view.getQuery();
   var tag = this.tagForQuery_(query);
   return{hashFn:function() {
-    var cache = view.getCompleteServerCache() || fb.core.snap.EMPTY_NODE;
+    var cache = view.getServerCache() || fb.core.snap.EMPTY_NODE;
     return cache.hash();
   }, onComplete:function(status, data) {
     if (status === "ok") {
@@ -12101,4 +12114,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.0.1';
+; Firebase.SDK_VERSION='2.0.2';
