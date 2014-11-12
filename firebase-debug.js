@@ -1,4 +1,4 @@
-/*! @license Firebase v2.0.2 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.0.3 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -5955,7 +5955,12 @@ fb.realtime.WebSocketConnection.prototype.open = function(onMess, onDisconn) {
   this.everConnected_ = false;
   fb.core.storage.PersistentStorage.set("previous_websocket_failure", true);
   try {
-    this.mySock = new fb.WebSocket(this.connURL);
+    if (NODE_CLIENT) {
+      var options = {"headers":{"User-Agent":"Firebase/" + fb.realtime.Constants.PROTOCOL_VERSION + "/" + CLIENT_VERSION + "/" + process.platform + "/Node"}};
+      this.mySock = new fb.WebSocket(this.connURL, [], options);
+    } else {
+      this.mySock = new fb.WebSocket(this.connURL);
+    }
   } catch (e) {
     this.log_("Error instantiating WebSocket.");
     var error = e.message || e.data;
@@ -7429,7 +7434,7 @@ fb.core.PersistentConnection.prototype.interrupt = function() {
 fb.core.PersistentConnection.prototype.resume = function() {
   this.shouldReconnect_ = true;
   this.reconnectDelay_ = RECONNECT_MIN_DELAY;
-  if (!this.connected_) {
+  if (!this.realtime_) {
     this.scheduleConnect_(0);
   }
 };
@@ -8963,14 +8968,14 @@ fb.core.view.ViewProcessor.prototype.applyUserMerge = function(cache, path, chan
   this.assertIndexed(cache);
   var self = this;
   var curCache = cache;
-  fb.util.obj.foreach(changedChildren, function(childName, childNode) {
-    var writePath = path.child(childName);
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
     if (self.cacheHasChild_(cache, writePath.getFront())) {
       curCache = self.applyUserOverwrite(curCache, writePath, childNode, writesCache, serverCache);
     }
   });
-  fb.util.obj.foreach(changedChildren, function(childName, childNode) {
-    var writePath = path.child(childName);
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
     if (!self.cacheHasChild_(cache, writePath.getFront())) {
       curCache = self.applyUserOverwrite(curCache, writePath, childNode, writesCache, serverCache);
     }
@@ -9162,14 +9167,14 @@ fb.core.view.ViewProcessor.prototype.applyServerMerge = function(cache, path, ch
   this.assertIndexed(cache);
   var self = this;
   var curCache = cache;
-  fb.util.obj.foreach(changedChildren, function(childName, childNode) {
-    var writePath = path.child(childName);
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
     if (self.cacheHasChild_(cache, writePath.getFront())) {
       curCache = self.applyServerOverwrite(curCache, writePath, childNode, writesCache, serverCache, constrainServerNode);
     }
   });
-  fb.util.obj.foreach(changedChildren, function(childName, childNode) {
-    var writePath = path.child(childName);
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
     if (!self.cacheHasChild_(cache, writePath.getFront())) {
       curCache = self.applyServerOverwrite(curCache, writePath, childNode, writesCache, serverCache, constrainServerNode);
     }
@@ -9745,6 +9750,13 @@ fb.core.util.ImmutableTree = function(value, opt_children) {
 };
 fb.core.util.ImmutableTree.EmptyChildren_ = new fb.core.util.SortedMap(fb.core.util.stringCompare);
 fb.core.util.ImmutableTree.Empty = new fb.core.util.ImmutableTree(null);
+fb.core.util.ImmutableTree.fromObject = function(obj) {
+  var tree = fb.core.util.ImmutableTree.Empty;
+  goog.object.forEach(obj, function(childSnap, childPath) {
+    tree = tree.set(new fb.core.util.Path(childPath), childSnap);
+  });
+  return tree;
+};
 fb.core.util.ImmutableTree.prototype.isEmpty = function() {
   return this.value === null && this.children.isEmpty();
 };
@@ -10474,13 +10486,18 @@ fb.core.operation.Merge = function(source, path, children) {
 };
 fb.core.operation.Merge.prototype.operationForChild = function(childName) {
   if (this.path.isEmpty()) {
-    var childSnap = fb.util.obj.get(this.children, childName);
-    if (childSnap) {
-      return new fb.core.operation.Overwrite(this.source, fb.core.util.Path.Empty, childSnap);
-    } else {
+    var childTree = this.children.subtree(new fb.core.util.Path(childName));
+    if (childTree.isEmpty()) {
       return null;
+    } else {
+      if (childTree.value) {
+        return new fb.core.operation.Overwrite(this.source, fb.core.util.Path.Empty, childTree.value);
+      } else {
+        return new fb.core.operation.Merge(this.source, fb.core.util.Path.Empty, childTree);
+      }
     }
   } else {
+    fb.core.util.assert(this.path.getFront() === childName, "Can't get a merge for a child not on the path of the operation");
     return new fb.core.operation.Merge(this.source, this.path.popFront(), this.children);
   }
 };
@@ -10530,7 +10547,8 @@ fb.core.SyncTree.prototype.applyUserOverwrite = function(path, newData, writeId,
 };
 fb.core.SyncTree.prototype.applyUserMerge = function(path, changedChildren, writeId) {
   this.pendingWriteTree_.addMerge(path, changedChildren, writeId);
-  return this.applyOperationToSyncPoints_(new fb.core.operation.Merge(fb.core.OperationSource.User, path, changedChildren));
+  var changeTree = fb.core.util.ImmutableTree.fromObject(changedChildren);
+  return this.applyOperationToSyncPoints_(new fb.core.operation.Merge(fb.core.OperationSource.User, path, changeTree));
 };
 fb.core.SyncTree.prototype.ackUserWrite = function(writeId, revert) {
   revert = revert || false;
@@ -10545,7 +10563,8 @@ fb.core.SyncTree.prototype.applyServerOverwrite = function(path, newData) {
   return this.applyOperationToSyncPoints_(new fb.core.operation.Overwrite(fb.core.OperationSource.Server, path, newData));
 };
 fb.core.SyncTree.prototype.applyServerMerge = function(path, changedChildren) {
-  return this.applyOperationToSyncPoints_(new fb.core.operation.Merge(fb.core.OperationSource.Server, path, changedChildren));
+  var changeTree = fb.core.util.ImmutableTree.fromObject(changedChildren);
+  return this.applyOperationToSyncPoints_(new fb.core.operation.Merge(fb.core.OperationSource.Server, path, changeTree));
 };
 fb.core.SyncTree.prototype.applyListenComplete = function(path) {
   return this.applyOperationToSyncPoints_(new fb.core.operation.ListenComplete(fb.core.OperationSource.Server, path));
@@ -10568,7 +10587,8 @@ fb.core.SyncTree.prototype.applyTaggedQueryMerge = function(path, changedChildre
     var r = this.parseQueryKey_(queryKey);
     var queryPath = r.path, queryId = r.queryId;
     var relativePath = fb.core.util.Path.RelativePath(queryPath, path);
-    var op = new fb.core.operation.Merge(fb.core.OperationSource.forServerTaggedQuery(queryId), relativePath, changedChildren);
+    var changeTree = fb.core.util.ImmutableTree.fromObject(changedChildren);
+    var op = new fb.core.operation.Merge(fb.core.OperationSource.forServerTaggedQuery(queryId), relativePath, changeTree);
     return this.applyTaggedOperation_(queryPath, queryId, op);
   } else {
     return[];
@@ -12114,4 +12134,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.0.2';
+; Firebase.SDK_VERSION='2.0.3';
