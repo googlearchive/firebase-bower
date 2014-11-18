@@ -1,4 +1,4 @@
-/*! @license Firebase v2.0.3 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.0.4 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -2600,17 +2600,19 @@ fb.core.util.base64Encode = function(str) {
   var utf8Bytes = fb.util.utf8.stringToByteArray(str);
   return goog.crypt.base64.encodeByteArray(utf8Bytes, true);
 };
-fb.core.util.base64DecodeIfNativeSupport = function(str) {
+fb.core.util.base64Decode = function(str) {
   try {
     if (NODE_CLIENT) {
       return(new Buffer(str, "base64")).toString("utf8");
     } else {
       if (typeof atob !== "undefined") {
         return atob(str);
+      } else {
+        return goog.crypt.base64.decodeString(str, true);
       }
     }
   } catch (e) {
-    fb.core.util.log("base64DecodeIfNativeSupport failed: ", e);
+    fb.core.util.log("base64Decode failed: ", e);
   }
   return null;
 };
@@ -3452,7 +3454,7 @@ goog.require("fb.core.snap.comparators");
 fb.core.snap.Index = function() {
 };
 fb.core.snap.Index.FallbackType;
-fb.core.snap.Index.Fallback = Object.create(null);
+fb.core.snap.Index.Fallback = {};
 fb.core.snap.Index.prototype.compare = goog.abstractMethod;
 fb.core.snap.Index.prototype.isDefinedOn = goog.abstractMethod;
 fb.core.snap.Index.prototype.getCompare = function() {
@@ -3722,21 +3724,47 @@ fb.api.Query = function(repo, path, queryParams, orderByCalled) {
   this.queryParams_ = queryParams;
   this.orderByCalled_ = orderByCalled;
 };
-fb.api.Query.prototype.validateKeyIndex_ = function(params) {
+fb.api.Query.prototype.validateQueryEndpoints_ = function(params) {
+  var startNode = null;
+  var endNode = null;
+  if (params.hasStart()) {
+    startNode = params.getIndexStartValue();
+  }
+  if (params.hasEnd()) {
+    endNode = params.getIndexEndValue();
+  }
   if (params.getIndex() === fb.core.snap.KeyIndex) {
-    var msg = "Query: You must use startAt(), endAt() or equalTo() with a single string in " + "combination with orderByKey(). Other values or more parameters are not supported.";
+    var tooManyArgsError = "Query: When ordering by key, you may only pass one argument to " + "startAt(), endAt(), or equalTo().";
+    var wrongArgTypeError = "Query: When ordering by key, the argument passed to startAt(), endAt()," + "or equalTo() must be a string.";
     if (params.hasStart()) {
-      var startNode = params.getIndexStartValue();
       var startName = params.getIndexStartName();
-      if (startName != fb.core.util.MIN_NAME || startNode != null && typeof startNode !== "string") {
-        throw new Error(msg);
+      if (startName != fb.core.util.MIN_NAME) {
+        throw new Error(tooManyArgsError);
+      } else {
+        if (startNode != null && typeof startNode !== "string") {
+          throw new Error(wrongArgTypeError);
+        }
       }
     }
     if (params.hasEnd()) {
-      var endNode = params.getIndexEndValue();
       var endName = params.getIndexEndName();
-      if (endName != fb.core.util.MAX_NAME || endNode != null && typeof endNode !== "string") {
-        throw new Error(msg);
+      if (endName != fb.core.util.MAX_NAME) {
+        throw new Error(tooManyArgsError);
+      } else {
+        if (endNode != null && typeof endNode !== "string") {
+          throw new Error(wrongArgTypeError);
+        }
+      }
+    }
+  } else {
+    if (params.getIndex() === fb.core.snap.PriorityIndex) {
+      if (startNode != null && !fb.core.util.validation.isValidPriority(startNode) || endNode != null && !fb.core.util.validation.isValidPriority(endNode)) {
+        throw new Error("Query: When ordering by priority, the first argument passed to startAt(), " + "endAt(), or equalTo() must be a valid priority value (null, a number, or a string).");
+      }
+    } else {
+      fb.core.util.assert(params.getIndex() instanceof fb.core.snap.SubKeyIndex, "unknown index type.");
+      if (startNode != null && typeof startNode === "object" || endNode != null && typeof endNode === "object") {
+        throw new Error("Query: First argument passed to startAt(), endAt(), or equalTo() cannot be " + "an object.");
       }
     }
   }
@@ -3748,7 +3776,7 @@ fb.api.Query.prototype.validateLimit_ = function(params) {
 };
 fb.api.Query.prototype.validateNoPreviousOrderByCall_ = function(fnName) {
   if (this.orderByCalled_ === true) {
-    throw new Error(fnName + ": You can't combine multiple orderBy calls!");
+    throw new Error(fnName + ": You can't combine multiple orderBy calls.");
   }
 };
 fb.api.Query.prototype.getQueryParams = function() {
@@ -3832,7 +3860,7 @@ fb.api.Query.prototype.limit = function(limit) {
     throw new Error("Query.limit: First argument must be a positive integer.");
   }
   if (this.queryParams_.hasLimit()) {
-    throw new Error("Query.limit: Limit was previously set");
+    throw new Error("Query.limit: Limit was already set (by another call to limit, limitToFirst, or" + "limitToLast.");
   }
   var newParams = this.queryParams_.limit(limit);
   this.validateLimit_(newParams);
@@ -3845,7 +3873,7 @@ fb.api.Query.prototype.limitToFirst = function(limit) {
     throw new Error("Query.limitToFirst: First argument must be a positive integer.");
   }
   if (this.queryParams_.hasLimit()) {
-    throw new Error("Query.limitToFirst: Limit was previously set");
+    throw new Error("Query.limitToFirst: Limit was already set (by another call to limit, " + "limitToFirst, or limitToLast).");
   }
   return new fb.api.Query(this.repo, this.path, this.queryParams_.limitToFirst(limit), this.orderByCalled_);
 };
@@ -3856,7 +3884,7 @@ fb.api.Query.prototype.limitToLast = function(limit) {
     throw new Error("Query.limitToLast: First argument must be a positive integer.");
   }
   if (this.queryParams_.hasLimit()) {
-    throw new Error("Query.limitToLast: Limit was previously set");
+    throw new Error("Query.limitToLast: Limit was already set (by another call to limit, " + "limitToFirst, or limitToLast).");
   }
   return new fb.api.Query(this.repo, this.path, this.queryParams_.limitToLast(limit), this.orderByCalled_);
 };
@@ -3873,21 +3901,25 @@ fb.api.Query.prototype.orderByChild = function(key) {
   fb.core.util.validation.validateKey("Query.orderByChild", 1, key, false);
   this.validateNoPreviousOrderByCall_("Query.orderByChild");
   var index = new fb.core.snap.SubKeyIndex(key);
-  return new fb.api.Query(this.repo, this.path, this.queryParams_.orderBy(index), true);
+  var newParams = this.queryParams_.orderBy(index);
+  this.validateQueryEndpoints_(newParams);
+  return new fb.api.Query(this.repo, this.path, newParams, true);
 };
 goog.exportProperty(fb.api.Query.prototype, "orderByChild", fb.api.Query.prototype.orderByChild);
 fb.api.Query.prototype.orderByKey = function() {
   fb.util.validation.validateArgCount("Query.orderByKey", 0, 0, arguments.length);
   this.validateNoPreviousOrderByCall_("Query.orderByKey");
   var newParams = this.queryParams_.orderBy(fb.core.snap.KeyIndex);
-  this.validateKeyIndex_(newParams);
+  this.validateQueryEndpoints_(newParams);
   return new fb.api.Query(this.repo, this.path, newParams, true);
 };
 goog.exportProperty(fb.api.Query.prototype, "orderByKey", fb.api.Query.prototype.orderByKey);
 fb.api.Query.prototype.orderByPriority = function() {
   fb.util.validation.validateArgCount("Query.orderByPriority", 0, 0, arguments.length);
   this.validateNoPreviousOrderByCall_("Query.orderByPriority");
-  return new fb.api.Query(this.repo, this.path, this.queryParams_.orderBy(fb.core.snap.PriorityIndex), true);
+  var newParams = this.queryParams_.orderBy(fb.core.snap.PriorityIndex);
+  this.validateQueryEndpoints_(newParams);
+  return new fb.api.Query(this.repo, this.path, newParams, true);
 };
 goog.exportProperty(fb.api.Query.prototype, "orderByPriority", fb.api.Query.prototype.orderByPriority);
 fb.api.Query.prototype.startAt = function(value, name) {
@@ -3896,9 +3928,9 @@ fb.api.Query.prototype.startAt = function(value, name) {
   fb.core.util.validation.validateKey("Query.startAt", 2, name, true);
   var newParams = this.queryParams_.startAt(value, name);
   this.validateLimit_(newParams);
-  this.validateKeyIndex_(newParams);
+  this.validateQueryEndpoints_(newParams);
   if (this.queryParams_.hasStart()) {
-    throw new Error("Query.startAt: startAt() or equalTo() previously called");
+    throw new Error("Query.startAt: Starting point was already set (by another call to startAt " + "or equalTo).");
   }
   if (!goog.isDef(value)) {
     value = null;
@@ -3913,9 +3945,9 @@ fb.api.Query.prototype.endAt = function(value, name) {
   fb.core.util.validation.validateKey("Query.endAt", 2, name, true);
   var newParams = this.queryParams_.endAt(value, name);
   this.validateLimit_(newParams);
-  this.validateKeyIndex_(newParams);
+  this.validateQueryEndpoints_(newParams);
   if (this.queryParams_.hasEnd()) {
-    throw new Error("Query.endAt: endAt() or equalTo() previously called");
+    throw new Error("Query.endAt: Ending point was already set (by another call to endAt or " + "equalTo).");
   }
   return new fb.api.Query(this.repo, this.path, newParams, this.orderByCalled_);
 };
@@ -3925,10 +3957,10 @@ fb.api.Query.prototype.equalTo = function(value, name) {
   fb.core.util.validation.validateFirebaseDataArg("Query.equalTo", 1, value, false);
   fb.core.util.validation.validateKey("Query.equalTo", 2, name, true);
   if (this.queryParams_.hasStart()) {
-    throw new Error("Query.equalTo: startAt() or equalTo() previously called!");
+    throw new Error("Query.equalTo: Starting point was already set (by another call to endAt or " + "equalTo).");
   }
   if (this.queryParams_.hasEnd()) {
-    throw new Error("Query.equalTo: endAt() or equalTo() previously called!");
+    throw new Error("Query.equalTo: Ending point was already set (by another call to endAt or " + "equalTo).");
   }
   return this.startAt(value, name).endAt(value, name);
 };
@@ -5311,6 +5343,11 @@ fb.api.DataSnapshot.prototype.exportVal = function() {
   return this.node_.val(true);
 };
 goog.exportProperty(fb.api.DataSnapshot.prototype, "exportVal", fb.api.DataSnapshot.prototype.exportVal);
+fb.api.DataSnapshot.prototype.exists = function() {
+  fb.util.validation.validateArgCount("Firebase.DataSnapshot.exists", 0, 0, arguments.length);
+  return!this.node_.isEmpty();
+};
+goog.exportProperty(fb.api.DataSnapshot.prototype, "exists", fb.api.DataSnapshot.prototype.exists);
 fb.api.DataSnapshot.prototype.child = function(childPathString) {
   fb.util.validation.validateArgCount("Firebase.DataSnapshot.child", 0, 1, arguments.length);
   if (goog.isNumber(childPathString)) {
@@ -7008,8 +7045,8 @@ fb.util.jwt.decode = function(token) {
   var header = {}, claims = {}, data = {}, signature = "";
   try {
     var parts = token.split(".");
-    header = fb.util.json.eval(fb.core.util.base64DecodeIfNativeSupport(parts[0]) || "");
-    claims = fb.util.json.eval(fb.core.util.base64DecodeIfNativeSupport(parts[1]) || "");
+    header = fb.util.json.eval(fb.core.util.base64Decode(parts[0]) || "");
+    claims = fb.util.json.eval(fb.core.util.base64Decode(parts[1]) || "");
     signature = parts[2];
     data = claims["d"] || {};
     delete claims["d"];
@@ -8165,9 +8202,9 @@ fb.login.transports.JSONP.prototype.open = function(url, params, cb) {
   fb.login.transports.util.addListener(window, "beforeunload", handleInterrupt_);
   function cleanup_() {
     setTimeout(function() {
-      delete window[fb.login.Constants.JSONP_CALLBACK_NAMESPACE][id];
+      window[fb.login.Constants.JSONP_CALLBACK_NAMESPACE][id] = undefined;
       if (goog.object.isEmpty(window[fb.login.Constants.JSONP_CALLBACK_NAMESPACE])) {
-        delete window[fb.login.Constants.JSONP_CALLBACK_NAMESPACE];
+        window[fb.login.Constants.JSONP_CALLBACK_NAMESPACE] = undefined;
       }
       try {
         var el = document.getElementById(id);
@@ -8345,7 +8382,7 @@ fb.login.AuthenticationManager.prototype.resumeSession = function() {
 };
 fb.login.AuthenticationManager.prototype.authenticate = function(cred, userProfile, clientOptions, opt_onComplete, opt_onCancel) {
   if (this.repoInfo_.isDemoHost()) {
-    fb.core.util.warn("FirebaseRef.auth() not supported on demo Firebases (*.firebaseio-demo.com). " + "Please use on production Firebases only (*.firebaseio.com).");
+    fb.core.util.warn("Firebase authentication is not supported on demo Firebases (*.firebaseio-demo.com). " + "To secure your Firebase, create a production Firebase at https://www.firebase.com.");
   }
   var self = this;
   this.authConn_(cred, function(status, data) {
@@ -11188,16 +11225,16 @@ fb.core.Repo.prototype.statsIncrementCounter = function(metric) {
 fb.core.Repo.prototype.log_ = function(var_args) {
   fb.core.util.log("r:" + this.connection_.id + ":", arguments);
 };
-fb.core.Repo.prototype.callOnCompleteCallback = function(callback, status, data) {
+fb.core.Repo.prototype.callOnCompleteCallback = function(callback, status, errorReason) {
   if (callback) {
     fb.core.util.exceptionGuard(function() {
       if (status == "ok") {
-        callback(null, data);
+        callback(null);
       } else {
         var code = (status || "error").toUpperCase();
         var message = code;
-        if (data) {
-          message += ": " + data;
+        if (errorReason) {
+          message += ": " + errorReason;
         }
         var error = new Error(message);
         error.code = code;
@@ -12134,4 +12171,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.0.3';
+; Firebase.SDK_VERSION='2.0.4';
