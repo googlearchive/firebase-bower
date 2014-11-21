@@ -5572,14 +5572,14 @@ goog.provide("fb.core.util.NodePatches");
         }
         return ret;
       };
-      function writeAfterEnd(stream, state, cb) {
+      (function writeAfterEnd(stream, state, cb) {
         var er = new Error("write after end");
         stream["emit"]("error", er);
         process["nextTick"](function() {
           cb(er);
         });
-      }
-      function validChunk(stream, state, chunk, cb) {
+      })();
+      (function validChunk(stream, state, chunk, cb) {
         var valid = true;
         if (!Buffer["isBuffer"](chunk) && "string" !== typeof chunk && chunk !== null && chunk !== undefined && !state["objectMode"]) {
           var er = new TypeError("Invalid non-string/buffer chunk");
@@ -5590,8 +5590,8 @@ goog.provide("fb.core.util.NodePatches");
           valid = false;
         }
         return valid;
-      }
-      function writeOrBuffer(stream, state, chunk, encoding, cb) {
+      })();
+      (function writeOrBuffer(stream, state, chunk, encoding, cb) {
         chunk = decodeChunk(state, chunk, encoding);
         if (Buffer["isBuffer"](chunk)) {
           encoding = "buffer";
@@ -5608,26 +5608,26 @@ goog.provide("fb.core.util.NodePatches");
           doWrite(stream, state, len, chunk, encoding, cb);
         }
         return ret;
-      }
-      function decodeChunk(state, chunk, encoding) {
+      })();
+      (function decodeChunk(state, chunk, encoding) {
         if (!state["objectMode"] && state["decodeStrings"] !== false && typeof chunk === "string") {
           chunk = new Buffer(chunk, encoding);
         }
         return chunk;
-      }
-      function WriteReq(chunk, encoding, cb) {
+      })();
+      (function WriteReq(chunk, encoding, cb) {
         this["chunk"] = chunk;
         this["encoding"] = encoding;
         this["callback"] = cb;
-      }
-      function doWrite(stream, state, len, chunk, encoding, cb) {
+      })();
+      (function doWrite(stream, state, len, chunk, encoding, cb) {
         state["writelen"] = len;
         state["writecb"] = cb;
         state["writing"] = true;
         state["sync"] = true;
         stream["_write"](chunk, encoding, state["onwrite"]);
         state["sync"] = false;
-      }
+      })();
       var Duplex = require("_stream_duplex");
       Duplex["prototype"]["write"] = Writable["prototype"]["write"];
     }
