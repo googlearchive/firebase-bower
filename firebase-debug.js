@@ -1,4 +1,4 @@
-/*! @license Firebase v2.0.6 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.1.0 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -2705,7 +2705,8 @@ fb.core.util.parseRepoInfo = function(dataURL) {
   return{repoInfo:new fb.core.RepoInfo(parsedUrl.host, parsedUrl.secure, namespace, webSocketOnly), path:new fb.core.util.Path(parsedUrl.pathString)};
 };
 fb.core.util.parseURL = function(dataURL) {
-  var host = "", domain = "", subdomain = "", secure = true, scheme = "https", pathString = "";
+  var host = "", domain = "", subdomain = "", pathString = "";
+  var secure = true, scheme = "https", port = 443;
   if (goog.isString(dataURL)) {
     var colonInd = dataURL.indexOf("//");
     if (colonInd >= 0) {
@@ -2717,26 +2718,23 @@ fb.core.util.parseURL = function(dataURL) {
       slashInd = dataURL.length;
     }
     host = dataURL.substring(0, slashInd);
-    dataURL = dataURL.substring(slashInd + 1);
+    pathString = fb.core.util.decodePath(dataURL.substring(slashInd));
     var parts = host.split(".");
     if (parts.length === 3) {
-      colonInd = parts[2].indexOf(":");
-      if (colonInd >= 0) {
-        secure = scheme === "https" || scheme === "wss";
-      } else {
-        secure = true;
-      }
       domain = parts[1];
-      subdomain = parts[0];
-      pathString = fb.core.util.decodePath("/" + dataURL);
-      subdomain = subdomain.toLowerCase();
+      subdomain = parts[0].toLowerCase();
     } else {
       if (parts.length === 2) {
         domain = parts[0];
       }
     }
+    colonInd = host.indexOf(":");
+    if (colonInd >= 0) {
+      secure = scheme === "https" || scheme === "wss";
+      port = goog.string.parseInt(host.substring(colonInd + 1));
+    }
   }
-  return{host:host, domain:domain, subdomain:subdomain, secure:secure, scheme:scheme, pathString:pathString};
+  return{host:host, port:port, domain:domain, subdomain:subdomain, secure:secure, scheme:scheme, pathString:pathString};
 };
 fb.core.util.decodePath = function(pathString) {
   var pathStringDecoded = "";
@@ -3021,7 +3019,39 @@ fb.core.view.CancelEvent.prototype.getEventRunner = function() {
 fb.core.view.CancelEvent.prototype.toString = function() {
   return this.path.toString() + ":cancel";
 };
+goog.provide("fb.core.view.Change");
+fb.core.view.Change = function(type, snapshotNode, childName, oldSnap, prevName) {
+  this.type = type;
+  this.snapshotNode = snapshotNode;
+  this.childName = childName;
+  this.oldSnap = oldSnap;
+  this.prevName = prevName;
+};
+fb.core.view.Change.valueChange = function(snapshot) {
+  return new fb.core.view.Change(fb.core.view.Change.VALUE, snapshot);
+};
+fb.core.view.Change.childAddedChange = function(childKey, snapshot) {
+  return new fb.core.view.Change(fb.core.view.Change.CHILD_ADDED, snapshot, childKey);
+};
+fb.core.view.Change.childRemovedChange = function(childKey, snapshot) {
+  return new fb.core.view.Change(fb.core.view.Change.CHILD_REMOVED, snapshot, childKey);
+};
+fb.core.view.Change.childChangedChange = function(childKey, newSnapshot, oldSnapshot) {
+  return new fb.core.view.Change(fb.core.view.Change.CHILD_CHANGED, newSnapshot, childKey, oldSnapshot);
+};
+fb.core.view.Change.childMovedChange = function(childKey, snapshot) {
+  return new fb.core.view.Change(fb.core.view.Change.CHILD_MOVED, snapshot, childKey);
+};
+fb.core.view.Change.prototype.changeWithPrevName = function(prevName) {
+  return new fb.core.view.Change(this.type, this.snapshotNode, this.childName, this.oldSnap, prevName);
+};
+fb.core.view.Change.CHILD_ADDED = "child_added";
+fb.core.view.Change.CHILD_REMOVED = "child_removed";
+fb.core.view.Change.CHILD_CHANGED = "child_changed";
+fb.core.view.Change.CHILD_MOVED = "child_moved";
+fb.core.view.Change.VALUE = "value";
 goog.provide("fb.core.view.EventRegistration");
+goog.require("fb.core.view.Change");
 goog.require("fb.core.view.Event");
 fb.core.view.EventRegistration = function() {
 };
@@ -3066,7 +3096,15 @@ fb.core.view.ValueEventRegistration.prototype.createCancelEvent = function(error
   }
 };
 fb.core.view.ValueEventRegistration.prototype.matches = function(other) {
-  return other instanceof fb.core.view.ValueEventRegistration && (!other.callback_ || !this.callback_ || other.callback_ === this.callback_) && other.context_ === this.context_;
+  if (!(other instanceof fb.core.view.ValueEventRegistration)) {
+    return false;
+  } else {
+    if (!other.callback_ || !this.callback_) {
+      return true;
+    } else {
+      return other.callback_ === this.callback_ && other.context_ === this.context_;
+    }
+  }
 };
 fb.core.view.ValueEventRegistration.prototype.hasAnyCallback = function() {
   return this.callback_ !== null;
@@ -3089,7 +3127,8 @@ fb.core.view.ChildEventRegistration.prototype.createCancelEvent = function(error
   }
 };
 fb.core.view.ChildEventRegistration.prototype.createEvent = function(change, query) {
-  var ref = query.ref().child(change.childName);
+  fb.core.util.assert(change.childName != null, "Child events should have a childName.");
+  var ref = query.ref().child((change.childName));
   var index = query.getQueryParams().getIndex();
   return new fb.core.view.DataEvent(change.type, this, new fb.api.DataSnapshot(change.snapshotNode, ref, index), change.prevName);
 };
@@ -3113,25 +3152,24 @@ fb.core.view.ChildEventRegistration.prototype.matches = function(other) {
     if (!this.callbacks_ || !other.callbacks_) {
       return true;
     } else {
-      var otherCount = goog.object.getCount(other.callbacks_);
-      var thisCount = goog.object.getCount(this.callbacks_);
-      if (otherCount === thisCount) {
-        if (otherCount === 1) {
-          var otherKey = (goog.object.getAnyKey(other.callbacks_));
-          var thisKey = (goog.object.getAnyKey(this.callbacks_));
-          return thisKey === otherKey && (!other.callbacks_[otherKey] || !this.callbacks_[thisKey] || other.callbacks_[otherKey] === this.callbacks_[thisKey]);
-        } else {
-          return goog.object.every(this.callbacks_, function(cb, eventType) {
-            return other.callbacks_[eventType] === cb;
-          });
+      if (this.context_ === other.context_) {
+        var otherCount = goog.object.getCount(other.callbacks_);
+        var thisCount = goog.object.getCount(this.callbacks_);
+        if (otherCount === thisCount) {
+          if (otherCount === 1) {
+            var otherKey = (goog.object.getAnyKey(other.callbacks_));
+            var thisKey = (goog.object.getAnyKey(this.callbacks_));
+            return thisKey === otherKey && (!other.callbacks_[otherKey] || !this.callbacks_[thisKey] || other.callbacks_[otherKey] === this.callbacks_[thisKey]);
+          } else {
+            return goog.object.every(this.callbacks_, function(cb, eventType) {
+              return other.callbacks_[eventType] === cb;
+            });
+          }
         }
-      } else {
-        return false;
       }
     }
-  } else {
-    return false;
   }
+  return false;
 };
 fb.core.view.ChildEventRegistration.prototype.hasAnyCallback = function() {
   return this.callbacks_ !== null;
@@ -3302,16 +3340,24 @@ fb.core.util.validation.validateFirebaseData = function(errorPrefix, data, depth
     throw new Error(errorPrefix + "contains a string greater than " + fb.core.util.validation.MAX_LEAF_SIZE_ + " utf8 bytes" + fb.core.util.validation.pathLocation_(path) + " ('" + data.substring(0, 50) + "...')");
   }
   if (goog.isObject(data)) {
-    for (var key in data) {
-      if (fb.util.obj.contains(data, key)) {
-        var value = data[key];
-        if (key !== ".priority" && key !== ".value" && key !== ".sv" && !fb.core.util.validation.isValidKey(key)) {
-          throw new Error(errorPrefix + " contains an invalid key (" + key + ")" + fb.core.util.validation.pathLocation_(path) + '.  Keys must be non-empty strings and can\'t contain ".", "#", "$", "/", "[", or "]"');
+    var hasDotValue = false, hasActualChild = false;
+    fb.util.obj.foreach(data, function(key, value) {
+      if (key === ".value") {
+        hasDotValue = true;
+      } else {
+        if (key !== ".priority" && key !== ".sv") {
+          hasActualChild = true;
+          if (!fb.core.util.validation.isValidKey(key)) {
+            throw new Error(errorPrefix + " contains an invalid key (" + key + ")" + fb.core.util.validation.pathLocation_(path) + '.  Keys must be non-empty strings and can\'t contain ".", "#", "$", "/", "[", or "]"');
+          }
         }
-        path.push(key);
-        fb.core.util.validation.validateFirebaseData(errorPrefix, value, depth + 1, path);
-        path.pop();
       }
+      path.push(key);
+      fb.core.util.validation.validateFirebaseData(errorPrefix, value, depth + 1, path);
+      path.pop();
+    });
+    if (hasDotValue && hasActualChild) {
+      throw new Error(errorPrefix + ' contains ".value" child' + fb.core.util.validation.pathLocation_(path) + " in addition to actual children.");
     }
   }
 };
@@ -3322,12 +3368,15 @@ fb.core.util.validation.pathLocation_ = function(path) {
     return " in property '" + path.join(".") + "'";
   }
 };
-fb.core.util.validation.validateFirebaseObjectDataArg = function(fnName, argumentNumber, data, optional) {
+fb.core.util.validation.validateFirebaseMergeDataArg = function(fnName, argumentNumber, data, optional) {
   if (optional && !goog.isDef(data)) {
     return;
   }
   if (!goog.isObject(data) || goog.isArray(data)) {
     throw new Error(fb.util.validation.errorPrefix(fnName, argumentNumber, optional) + " must be an Object containing " + "the children to replace.");
+  }
+  if (fb.util.obj.contains(data, ".value")) {
+    throw new Error(fb.util.validation.errorPrefix(fnName, argumentNumber, optional) + ' must not contain ".value".  ' + "To overwrite with a leaf value, just use .set() instead.");
   }
   fb.core.util.validation.validateFirebaseDataArg(fnName, argumentNumber, data, optional);
 };
@@ -3440,6 +3489,144 @@ fb.core.util.validation.validateObjectContainsKey = function(fnName, argumentNum
     }
   }
 };
+goog.provide("fb.core.view.filter.IndexedFilter");
+fb.core.view.filter.IndexedFilter = function(index) {
+  this.index_ = index;
+};
+fb.core.view.filter.IndexedFilter.prototype.updateChild = function(snap, key, newChild, source, optChangeAccumulator) {
+  var Change = fb.core.view.Change;
+  fb.core.util.assert(snap.isIndexed(this.index_), "A node must be indexed if only a child is updated");
+  var oldChild = snap.getImmediateChild(key);
+  if (oldChild.equals(newChild)) {
+    return snap;
+  }
+  if (optChangeAccumulator != null) {
+    if (newChild.isEmpty()) {
+      if (snap.hasChild(key)) {
+        optChangeAccumulator.trackChildChange(Change.childRemovedChange(key, oldChild));
+      } else {
+        fb.core.util.assert(snap.isLeafNode(), "A child remove without an old child only makes sense on a leaf node");
+      }
+    } else {
+      if (oldChild.isEmpty()) {
+        optChangeAccumulator.trackChildChange(Change.childAddedChange(key, newChild));
+      } else {
+        optChangeAccumulator.trackChildChange(Change.childChangedChange(key, newChild, oldChild));
+      }
+    }
+  }
+  if (snap.isLeafNode() && newChild.isEmpty()) {
+    return snap;
+  } else {
+    return snap.updateImmediateChild(key, newChild);
+  }
+};
+fb.core.view.filter.IndexedFilter.prototype.updateFullNode = function(oldSnap, newSnap, optChangeAccumulator) {
+  var Change = fb.core.view.Change;
+  if (optChangeAccumulator != null) {
+    if (!oldSnap.isLeafNode()) {
+      oldSnap.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+        if (!newSnap.hasChild(key)) {
+          optChangeAccumulator.trackChildChange(Change.childRemovedChange(key, childNode));
+        }
+      });
+    }
+    if (!newSnap.isLeafNode()) {
+      newSnap.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+        if (oldSnap.hasChild(key)) {
+          var oldChild = oldSnap.getImmediateChild(key);
+          if (!oldChild.equals(childNode)) {
+            optChangeAccumulator.trackChildChange(Change.childChangedChange(key, childNode, oldChild));
+          }
+        } else {
+          optChangeAccumulator.trackChildChange(Change.childAddedChange(key, childNode));
+        }
+      });
+    }
+  }
+  return newSnap.withIndex(this.index_);
+};
+fb.core.view.filter.IndexedFilter.prototype.updatePriority = function(oldSnap, newPriority) {
+  if (oldSnap.isEmpty()) {
+    return fb.core.snap.EMPTY_NODE;
+  } else {
+    return oldSnap.updatePriority(newPriority);
+  }
+};
+fb.core.view.filter.IndexedFilter.prototype.filtersNodes = function() {
+  return false;
+};
+fb.core.view.filter.IndexedFilter.prototype.getIndexedFilter = function() {
+  return this;
+};
+fb.core.view.filter.IndexedFilter.prototype.getIndex = function() {
+  return this.index_;
+};
+goog.provide("fb.core.view.filter.RangedFilter");
+goog.require("fb.core.view.filter.IndexedFilter");
+fb.core.view.filter.RangedFilter = function(params) {
+  this.indexedFilter_ = new fb.core.view.filter.IndexedFilter(params.getIndex());
+  this.index_ = params.getIndex();
+  this.startPost_ = this.getStartPost_(params);
+  this.endPost_ = this.getEndPost_(params);
+};
+fb.core.view.filter.RangedFilter.prototype.getStartPost = function() {
+  return this.startPost_;
+};
+fb.core.view.filter.RangedFilter.prototype.getEndPost = function() {
+  return this.endPost_;
+};
+fb.core.view.filter.RangedFilter.prototype.matches = function(node) {
+  return this.index_.compare(this.getStartPost(), node) <= 0 && this.index_.compare(node, this.getEndPost()) <= 0;
+};
+fb.core.view.filter.RangedFilter.prototype.updateChild = function(snap, key, newChild, source, optChangeAccumulator) {
+  if (!this.matches(new fb.core.snap.NamedNode(key, newChild))) {
+    newChild = fb.core.snap.EMPTY_NODE;
+  }
+  return this.indexedFilter_.updateChild(snap, key, newChild, source, optChangeAccumulator);
+};
+fb.core.view.filter.RangedFilter.prototype.updateFullNode = function(oldSnap, newSnap, optChangeAccumulator) {
+  if (newSnap.isLeafNode()) {
+    newSnap = fb.core.snap.EMPTY_NODE;
+  }
+  var filtered = newSnap.withIndex(this.index_);
+  filtered = filtered.updatePriority(fb.core.snap.EMPTY_NODE);
+  var self = this;
+  newSnap.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+    if (!self.matches(new fb.core.snap.NamedNode(key, childNode))) {
+      filtered = filtered.updateImmediateChild(key, fb.core.snap.EMPTY_NODE);
+    }
+  });
+  return this.indexedFilter_.updateFullNode(oldSnap, filtered, optChangeAccumulator);
+};
+fb.core.view.filter.RangedFilter.prototype.updatePriority = function(oldSnap, newPriority) {
+  return oldSnap;
+};
+fb.core.view.filter.RangedFilter.prototype.filtersNodes = function() {
+  return true;
+};
+fb.core.view.filter.RangedFilter.prototype.getIndexedFilter = function() {
+  return this.indexedFilter_;
+};
+fb.core.view.filter.RangedFilter.prototype.getIndex = function() {
+  return this.index_;
+};
+fb.core.view.filter.RangedFilter.prototype.getStartPost_ = function(params) {
+  if (params.hasStart()) {
+    var startName = params.getIndexStartName();
+    return params.getIndex().makePost(params.getIndexStartValue(), startName);
+  } else {
+    return params.getIndex().minPost();
+  }
+};
+fb.core.view.filter.RangedFilter.prototype.getEndPost_ = function(params) {
+  if (params.hasEnd()) {
+    var endName = params.getIndexEndName();
+    return params.getIndex().makePost(params.getIndexEndValue(), endName);
+  } else {
+    return params.getIndex().maxPost();
+  }
+};
 goog.provide("fb.core.snap.comparators");
 fb.core.snap.NAME_ONLY_COMPARATOR = function(left, right) {
   return fb.core.util.nameCompare(left.name, right.name);
@@ -3532,10 +3719,306 @@ fb.core.snap.KeyIndex_.prototype.toString = function() {
   return ".key";
 };
 fb.core.snap.KeyIndex = new fb.core.snap.KeyIndex_;
+goog.provide("fb.core.view.CompleteChildSource");
+fb.core.view.CompleteChildSource = function() {
+};
+fb.core.view.CompleteChildSource.prototype.getCompleteChild = function(childKey) {
+};
+fb.core.view.CompleteChildSource.prototype.getChildAfterChild = function(index, child, reverse) {
+};
+fb.core.view.NoCompleteChildSource_ = function() {
+};
+fb.core.view.NoCompleteChildSource_.prototype.getCompleteChild = function() {
+  return null;
+};
+fb.core.view.NoCompleteChildSource_.prototype.getChildAfterChild = function() {
+  return null;
+};
+fb.core.view.NO_COMPLETE_CHILD_SOURCE = new fb.core.view.NoCompleteChildSource_;
+fb.core.view.WriteTreeCompleteChildSource = function(writes, viewCache, optCompleteServerCache) {
+  this.writes_ = writes;
+  this.viewCache_ = viewCache;
+  this.optCompleteServerCache_ = optCompleteServerCache;
+};
+fb.core.view.WriteTreeCompleteChildSource.prototype.getCompleteChild = function(childKey) {
+  var node = this.viewCache_.getEventCache();
+  if (node.isCompleteForChild(childKey)) {
+    return node.getNode().getImmediateChild(childKey);
+  } else {
+    var serverNode = this.optCompleteServerCache_ != null ? new fb.core.view.CacheNode(this.optCompleteServerCache_, true, false) : this.viewCache_.getServerCache();
+    return this.writes_.calcCompleteChild(childKey, serverNode);
+  }
+};
+fb.core.view.WriteTreeCompleteChildSource.prototype.getChildAfterChild = function(index, child, reverse) {
+  var completeServerData = this.optCompleteServerCache_ != null ? this.optCompleteServerCache_ : this.viewCache_.getCompleteServerSnap();
+  var nodes = this.writes_.calcIndexedSlice(completeServerData, child, 1, reverse, index);
+  if (nodes.length === 0) {
+    return null;
+  } else {
+    return nodes[0];
+  }
+};
+goog.provide("fb.core.view.ChildChangeAccumulator");
+fb.core.view.ChildChangeAccumulator = function() {
+  this.changeMap_ = {};
+};
+fb.core.view.ChildChangeAccumulator.prototype.trackChildChange = function(change) {
+  var Change = fb.core.view.Change;
+  var type = change.type;
+  var childKey = (change.childName);
+  fb.core.util.assert(type == fb.core.view.Change.CHILD_ADDED || type == fb.core.view.Change.CHILD_CHANGED || type == fb.core.view.Change.CHILD_REMOVED, "Only child changes supported for tracking");
+  fb.core.util.assert(childKey !== ".priority", "Only non-priority child changes can be tracked.");
+  var oldChange = fb.util.obj.get(this.changeMap_, childKey);
+  if (oldChange) {
+    var oldType = oldChange.type;
+    if (type == Change.CHILD_ADDED && oldType == Change.CHILD_REMOVED) {
+      this.changeMap_[childKey] = Change.childChangedChange(childKey, change.snapshotNode, oldChange.snapshotNode);
+    } else {
+      if (type == Change.CHILD_REMOVED && oldType == Change.CHILD_ADDED) {
+        delete this.changeMap_[childKey];
+      } else {
+        if (type == Change.CHILD_REMOVED && oldType == Change.CHILD_CHANGED) {
+          this.changeMap_[childKey] = Change.childRemovedChange(childKey, (oldChange.oldSnap));
+        } else {
+          if (type == Change.CHILD_CHANGED && oldType == Change.CHILD_ADDED) {
+            this.changeMap_[childKey] = Change.childAddedChange(childKey, change.snapshotNode);
+          } else {
+            if (type == Change.CHILD_CHANGED && oldType == Change.CHILD_CHANGED) {
+              this.changeMap_[childKey] = Change.childChangedChange(childKey, change.snapshotNode, (oldChange.oldSnap));
+            } else {
+              throw fb.core.util.assertionError("Illegal combination of changes: " + change + " occurred after " + oldChange);
+            }
+          }
+        }
+      }
+    }
+  } else {
+    this.changeMap_[childKey] = change;
+  }
+};
+fb.core.view.ChildChangeAccumulator.prototype.getChanges = function() {
+  return goog.object.getValues(this.changeMap_);
+};
+goog.provide("fb.core.view.filter.NodeFilter");
+goog.require("fb.core.view.ChildChangeAccumulator");
+goog.require("fb.core.view.CompleteChildSource");
+fb.core.view.filter.NodeFilter = function() {
+};
+fb.core.view.filter.NodeFilter.prototype.updateChild = function(snap, key, newChild, source, optChangeAccumulator) {
+};
+fb.core.view.filter.NodeFilter.prototype.updateFullNode = function(oldSnap, newSnap, optChangeAccumulator) {
+};
+fb.core.view.filter.NodeFilter.prototype.updatePriority = function(oldSnap, newPriority) {
+};
+fb.core.view.filter.NodeFilter.prototype.filtersNodes = function() {
+};
+fb.core.view.filter.NodeFilter.prototype.getIndexedFilter = function() {
+};
+fb.core.view.filter.NodeFilter.prototype.getIndex = function() {
+};
+goog.provide("fb.core.snap.Node");
+goog.provide("fb.core.snap.NamedNode");
+fb.core.snap.Node = function() {
+};
+fb.core.snap.Node.prototype.isLeafNode;
+fb.core.snap.Node.prototype.getPriority;
+fb.core.snap.Node.prototype.updatePriority;
+fb.core.snap.Node.prototype.getImmediateChild;
+fb.core.snap.Node.prototype.getChild;
+fb.core.snap.Node.prototype.getPredecessorChildName;
+fb.core.snap.Node.prototype.updateImmediateChild;
+fb.core.snap.Node.prototype.updateChild;
+fb.core.snap.Node.prototype.hasChild;
+fb.core.snap.Node.prototype.isEmpty;
+fb.core.snap.Node.prototype.numChildren;
+fb.core.snap.Node.prototype.val;
+fb.core.snap.Node.prototype.hash;
+fb.core.snap.Node.prototype.compareTo;
+fb.core.snap.Node.prototype.equals;
+fb.core.snap.Node.prototype.withIndex;
+fb.core.snap.Node.prototype.isIndexed;
+fb.core.snap.NamedNode = function(name, node) {
+  this.name = name;
+  this.node = node;
+};
+fb.core.snap.NamedNode.Wrap = function(name, node) {
+  return new fb.core.snap.NamedNode(name, node);
+};
+goog.provide("fb.core.view.filter.LimitedFilter");
+goog.require("fb.core.snap.NamedNode");
+goog.require("fb.core.view.filter.RangedFilter");
+fb.core.view.filter.LimitedFilter = function(params) {
+  this.rangedFilter_ = new fb.core.view.filter.RangedFilter(params);
+  this.index_ = params.getIndex();
+  this.limit_ = params.getLimit();
+  this.reverse_ = !params.isViewFromLeft();
+};
+fb.core.view.filter.LimitedFilter.prototype.updateChild = function(snap, key, newChild, source, optChangeAccumulator) {
+  if (!this.rangedFilter_.matches(new fb.core.snap.NamedNode(key, newChild))) {
+    newChild = fb.core.snap.EMPTY_NODE;
+  }
+  if (snap.getImmediateChild(key).equals(newChild)) {
+    return snap;
+  } else {
+    if (snap.numChildren() < this.limit_) {
+      return this.rangedFilter_.getIndexedFilter().updateChild(snap, key, newChild, source, optChangeAccumulator);
+    } else {
+      return this.fullLimitUpdateChild_(snap, key, newChild, source, optChangeAccumulator);
+    }
+  }
+};
+fb.core.view.filter.LimitedFilter.prototype.updateFullNode = function(oldSnap, newSnap, optChangeAccumulator) {
+  var filtered;
+  if (newSnap.isLeafNode() || newSnap.isEmpty()) {
+    filtered = fb.core.snap.EMPTY_NODE.withIndex(this.index_);
+  } else {
+    if (this.limit_ * 2 < newSnap.numChildren() && newSnap.isIndexed(this.index_)) {
+      filtered = fb.core.snap.EMPTY_NODE.withIndex(this.index_);
+      var iterator;
+      newSnap = (newSnap);
+      if (this.reverse_) {
+        iterator = newSnap.getReverseIteratorFrom(this.rangedFilter_.getEndPost(), this.index_);
+      } else {
+        iterator = newSnap.getIteratorFrom(this.rangedFilter_.getStartPost(), this.index_);
+      }
+      var count = 0;
+      while (iterator.hasNext() && count < this.limit_) {
+        var next = iterator.getNext();
+        var inRange;
+        if (this.reverse_) {
+          inRange = this.index_.compare(this.rangedFilter_.getStartPost(), next) <= 0;
+        } else {
+          inRange = this.index_.compare(next, this.rangedFilter_.getEndPost()) <= 0;
+        }
+        if (inRange) {
+          filtered = filtered.updateImmediateChild(next.name, next.node);
+          count++;
+        } else {
+          break;
+        }
+      }
+    } else {
+      filtered = newSnap.withIndex(this.index_);
+      filtered = (filtered.updatePriority(fb.core.snap.EMPTY_NODE));
+      var startPost;
+      var endPost;
+      var cmp;
+      if (this.reverse_) {
+        iterator = filtered.getReverseIterator(this.index_);
+        startPost = this.rangedFilter_.getEndPost();
+        endPost = this.rangedFilter_.getStartPost();
+        var indexCompare = this.index_.getCompare();
+        cmp = function(a, b) {
+          return indexCompare(b, a);
+        };
+      } else {
+        iterator = filtered.getIterator(this.index_);
+        startPost = this.rangedFilter_.getStartPost();
+        endPost = this.rangedFilter_.getEndPost();
+        cmp = this.index_.getCompare();
+      }
+      count = 0;
+      var foundStartPost = false;
+      while (iterator.hasNext()) {
+        next = iterator.getNext();
+        if (!foundStartPost && cmp(startPost, next) <= 0) {
+          foundStartPost = true;
+        }
+        inRange = foundStartPost && count < this.limit_ && cmp(next, endPost) <= 0;
+        if (inRange) {
+          count++;
+        } else {
+          filtered = filtered.updateImmediateChild(next.name, fb.core.snap.EMPTY_NODE);
+        }
+      }
+    }
+  }
+  return this.rangedFilter_.getIndexedFilter().updateFullNode(oldSnap, filtered, optChangeAccumulator);
+};
+fb.core.view.filter.LimitedFilter.prototype.updatePriority = function(oldSnap, newPriority) {
+  return oldSnap;
+};
+fb.core.view.filter.LimitedFilter.prototype.filtersNodes = function() {
+  return true;
+};
+fb.core.view.filter.LimitedFilter.prototype.getIndexedFilter = function() {
+  return this.rangedFilter_.getIndexedFilter();
+};
+fb.core.view.filter.LimitedFilter.prototype.getIndex = function() {
+  return this.index_;
+};
+fb.core.view.filter.LimitedFilter.prototype.fullLimitUpdateChild_ = function(snap, childKey, childSnap, source, optChangeAccumulator) {
+  var Change = fb.core.view.Change;
+  var cmp;
+  if (this.reverse_) {
+    var indexCmp = this.index_.getCompare();
+    cmp = function(a, b) {
+      return indexCmp(b, a);
+    };
+  } else {
+    cmp = this.index_.getCompare();
+  }
+  var oldEventCache = (snap);
+  fb.core.util.assert(oldEventCache.numChildren() == this.limit_, "");
+  var newChildNamedNode = new fb.core.snap.NamedNode(childKey, childSnap);
+  var windowBoundary = (this.reverse_ ? oldEventCache.getFirstChild(this.index_) : oldEventCache.getLastChild(this.index_));
+  var inRange = this.rangedFilter_.matches(newChildNamedNode);
+  if (oldEventCache.hasChild(childKey)) {
+    var oldChildSnap = oldEventCache.getImmediateChild(childKey);
+    var nextChild = source.getChildAfterChild(this.index_, windowBoundary, this.reverse_);
+    if (nextChild != null && nextChild.name == childKey) {
+      nextChild = source.getChildAfterChild(this.index_, nextChild, this.reverse_);
+    }
+    var compareNext = nextChild == null ? 1 : cmp(nextChild, newChildNamedNode);
+    var remainsInWindow = inRange && !childSnap.isEmpty() && compareNext >= 0;
+    if (remainsInWindow) {
+      if (optChangeAccumulator != null) {
+        optChangeAccumulator.trackChildChange(Change.childChangedChange(childKey, childSnap, oldChildSnap));
+      }
+      return oldEventCache.updateImmediateChild(childKey, childSnap);
+    } else {
+      if (optChangeAccumulator != null) {
+        optChangeAccumulator.trackChildChange(Change.childRemovedChange(childKey, oldChildSnap));
+      }
+      var newEventCache = oldEventCache.updateImmediateChild(childKey, fb.core.snap.EMPTY_NODE);
+      var nextChildInRange = nextChild != null && this.rangedFilter_.matches(nextChild);
+      if (nextChildInRange) {
+        if (optChangeAccumulator != null) {
+          optChangeAccumulator.trackChildChange(Change.childAddedChange(nextChild.name, nextChild.node));
+        }
+        return newEventCache.updateImmediateChild(nextChild.name, nextChild.node);
+      } else {
+        return newEventCache;
+      }
+    }
+  } else {
+    if (childSnap.isEmpty()) {
+      return snap;
+    } else {
+      if (inRange) {
+        if (cmp(windowBoundary, newChildNamedNode) >= 0) {
+          if (optChangeAccumulator != null) {
+            optChangeAccumulator.trackChildChange(Change.childRemovedChange(windowBoundary.name, windowBoundary.node));
+            optChangeAccumulator.trackChildChange(Change.childAddedChange(childKey, childSnap));
+          }
+          return oldEventCache.updateImmediateChild(childKey, childSnap).updateImmediateChild(windowBoundary.name, fb.core.snap.EMPTY_NODE);
+        } else {
+          return snap;
+        }
+      } else {
+        return snap;
+      }
+    }
+  }
+};
 goog.provide("fb.core.view.QueryParams");
 goog.require("fb.core.snap.Index");
 goog.require("fb.core.snap.PriorityIndex");
 goog.require("fb.core.util");
+goog.require("fb.core.view.filter.IndexedFilter");
+goog.require("fb.core.view.filter.LimitedFilter");
+goog.require("fb.core.view.filter.NodeFilter");
+goog.require("fb.core.view.filter.RangedFilter");
 fb.core.view.QueryParams = function() {
   this.limitSet_ = false;
   this.startSet_ = false;
@@ -3649,6 +4132,9 @@ fb.core.view.QueryParams.prototype.limitToLast = function(newLimit) {
 fb.core.view.QueryParams.prototype.startAt = function(indexValue, key) {
   var newParams = this.copy_();
   newParams.startSet_ = true;
+  if (!goog.isDef(indexValue)) {
+    indexValue = null;
+  }
   newParams.indexStartValue_ = indexValue;
   if (key != null) {
     newParams.startNameSet_ = true;
@@ -3662,6 +4148,9 @@ fb.core.view.QueryParams.prototype.startAt = function(indexValue, key) {
 fb.core.view.QueryParams.prototype.endAt = function(indexValue, key) {
   var newParams = this.copy_();
   newParams.endSet_ = true;
+  if (!goog.isDef(indexValue)) {
+    indexValue = null;
+  }
   newParams.indexEndValue_ = indexValue;
   if (goog.isDef(key)) {
     newParams.endNameSet_ = true;
@@ -3710,6 +4199,17 @@ fb.core.view.QueryParams.prototype.getQueryObject = function() {
 };
 fb.core.view.QueryParams.prototype.loadsAllData = function() {
   return!(this.startSet_ || this.endSet_ || this.limitSet_);
+};
+fb.core.view.QueryParams.prototype.getNodeFilter = function() {
+  if (this.loadsAllData()) {
+    return new fb.core.view.filter.IndexedFilter(this.getIndex());
+  } else {
+    if (this.hasLimit()) {
+      return new fb.core.view.filter.LimitedFilter(this);
+    } else {
+      return new fb.core.view.filter.RangedFilter(this);
+    }
+  }
 };
 goog.provide("fb.api.Query");
 goog.require("fb.core.snap.Index");
@@ -4371,6 +4871,20 @@ fb.core.util.SortedMapIterator.prototype.getNext = function() {
   }
   return result;
 };
+fb.core.util.SortedMapIterator.prototype.hasNext = function() {
+  return this.nodeStack_.length > 0;
+};
+fb.core.util.SortedMapIterator.prototype.peek = function() {
+  if (this.nodeStack_.length === 0) {
+    return null;
+  }
+  var node = goog.array.peek(this.nodeStack_);
+  if (this.resultGenerator_) {
+    return this.resultGenerator_(node.key, node.value);
+  } else {
+    return{key:node.key, value:node.value};
+  }
+};
 fb.LLRBNode = function(key, value, color, left, right) {
   this.key = key;
   this.value = value;
@@ -4575,40 +5089,12 @@ fb.LLRBEmptyNode.prototype.isRed_ = function() {
   return false;
 };
 fb.core.util.SortedMap.EMPTY_NODE_ = new fb.LLRBEmptyNode;
-goog.provide("fb.core.snap.Node");
-goog.provide("fb.core.snap.NamedNode");
-fb.core.snap.Node = function() {
-};
-fb.core.snap.Node.prototype.isLeafNode;
-fb.core.snap.Node.prototype.getPriority;
-fb.core.snap.Node.prototype.updatePriority;
-fb.core.snap.Node.prototype.getImmediateChild;
-fb.core.snap.Node.prototype.getChild;
-fb.core.snap.Node.prototype.getPredecessorChildName;
-fb.core.snap.Node.prototype.updateImmediateChild;
-fb.core.snap.Node.prototype.updateChild;
-fb.core.snap.Node.prototype.hasChild;
-fb.core.snap.Node.prototype.isEmpty;
-fb.core.snap.Node.prototype.numChildren;
-fb.core.snap.Node.prototype.val;
-fb.core.snap.Node.prototype.hash;
-fb.core.snap.Node.prototype.compareTo;
-fb.core.snap.Node.prototype.equals;
-fb.core.snap.Node.prototype.withIndex;
-fb.core.snap.Node.prototype.isIndexed;
-fb.core.snap.NamedNode = function(name, node) {
-  this.name = name;
-  this.node = node;
-};
-fb.core.snap.NamedNode.Wrap = function(name, node) {
-  return new fb.core.snap.NamedNode(name, node);
-};
 goog.provide("fb.core.snap.LeafNode");
 goog.require("fb.core.snap.Node");
 goog.require("fb.core.util");
 fb.core.snap.LeafNode = function(value, opt_priorityNode) {
   this.value_ = value;
-  fb.core.util.assert(this.value_ !== null, "LeafNode shouldn't be created with null value.");
+  fb.core.util.assert(goog.isDef(this.value_) && this.value_ !== null, "LeafNode shouldn't be created with null/undefined value.");
   this.priorityNode_ = opt_priorityNode || fb.core.snap.EMPTY_NODE;
   fb.core.snap.validatePriorityNode(this.priorityNode_);
   this.lazyHash_ = null;
@@ -4650,7 +5136,11 @@ fb.core.snap.LeafNode.prototype.updateImmediateChild = function(childName, newCh
   if (childName === ".priority") {
     return this.updatePriority(newChildNode);
   } else {
-    return fb.core.snap.EMPTY_NODE.updateImmediateChild(childName, newChildNode).updatePriority(this.priorityNode_);
+    if (newChildNode.isEmpty() && childName !== ".priority") {
+      return this;
+    } else {
+      return fb.core.snap.EMPTY_NODE.updateImmediateChild(childName, newChildNode).updatePriority(this.priorityNode_);
+    }
   }
 };
 fb.core.snap.LeafNode.prototype.updateChild = function(path, newChildNode) {
@@ -4658,8 +5148,12 @@ fb.core.snap.LeafNode.prototype.updateChild = function(path, newChildNode) {
   if (front === null) {
     return newChildNode;
   } else {
-    fb.core.util.assert(front !== ".priority" || path.getLength() === 1, ".priority must be the last token in a path");
-    return this.updateImmediateChild(front, fb.core.snap.EMPTY_NODE.updateChild(path.popFront(), newChildNode));
+    if (newChildNode.isEmpty() && front !== ".priority") {
+      return this;
+    } else {
+      fb.core.util.assert(front !== ".priority" || path.getLength() === 1, ".priority must be the last token in a path");
+      return this.updateImmediateChild(front, fb.core.snap.EMPTY_NODE.updateChild(path.popFront(), newChildNode));
+    }
   }
 };
 fb.core.snap.LeafNode.prototype.isEmpty = function() {
@@ -5038,7 +5532,13 @@ fb.core.snap.ChildrenNode.prototype.getIteratorFrom = function(startPost, indexD
       return key;
     });
   } else {
-    return this.children_.getIteratorFrom(startPost.name, fb.core.snap.NamedNode.Wrap);
+    var iterator = this.children_.getIteratorFrom(startPost.name, fb.core.snap.NamedNode.Wrap);
+    var next = iterator.peek();
+    while (next != null && indexDefinition.compare(next, startPost) < 0) {
+      iterator.getNext();
+      next = iterator.peek();
+    }
+    return iterator;
   }
 };
 fb.core.snap.ChildrenNode.prototype.getReverseIterator = function(indexDefinition) {
@@ -5051,7 +5551,13 @@ fb.core.snap.ChildrenNode.prototype.getReverseIteratorFrom = function(endPost, i
       return key;
     });
   } else {
-    return this.children_.getReverseIteratorFrom(endPost.name, fb.core.snap.NamedNode.Wrap);
+    var iterator = this.children_.getReverseIteratorFrom(endPost.name, fb.core.snap.NamedNode.Wrap);
+    var next = iterator.peek();
+    while (next != null && indexDefinition.compare(next, endPost) > 0) {
+      iterator.getNext();
+      next = iterator.peek();
+    }
+    return iterator;
   }
 };
 fb.core.snap.ChildrenNode.prototype.compareTo = function(other) {
@@ -7866,7 +8372,7 @@ fb.login.transports.util.querystring = function(obj) {
       }
     }
   }
-  return params.join("&");
+  return params ? "&" + params.join("&") : "";
 };
 fb.login.transports.util.querystringDecode = function(str) {
   var obj = {};
@@ -8023,7 +8529,7 @@ fb.login.transports.CordovaInAppBrowser.prototype.open = function(url, params, c
     try {
       var a = document.createElement("a");
       a["href"] = url;
-      return a["host"] === fb.core.util.parseURL(fb.login.Constants.SERVER_HOST).host && a["pathname"] === fb.login.Constants.INTERNAL_REDIRECT_SENTINAL_PATH;
+      return a["host"] === parsedUrl.host && a["pathname"] === fb.login.Constants.INTERNAL_REDIRECT_SENTINAL_PATH;
     } catch (e) {
     }
     return false;
@@ -8062,6 +8568,82 @@ fb.login.transports.CordovaInAppBrowser["isAvailable"] = function() {
 };
 fb.login.transports.CordovaInAppBrowser.prototype.classification = function() {
   return "redirect";
+};
+goog.provide("fb.login.transports.NodeHttp");
+goog.require("fb.login.Constants");
+goog.require("fb.login.Errors");
+goog.require("fb.login.Transport");
+goog.require("fb.login.transports.util");
+goog.require("fb.login.util.environment");
+goog.require("fb.util.json");
+fb.login.transports.NodeHttp = function(opt_Options) {
+  var options = opt_Options || {};
+  if (!options["method"]) {
+    options["method"] = "GET";
+  }
+  if (!options["headers"]) {
+    options["headers"] = {};
+  }
+  if (!options["headers"]["content_type"]) {
+    options["headers"]["content_type"] = "application/json";
+  }
+  options["headers"]["content_type"] = options["headers"]["content_type"].toLowerCase();
+  this.options = options;
+};
+fb.login.transports.NodeHttp.prototype.open = function(url, params, cb) {
+  var self = this, parsedUrl = fb.core.util.parseURL(url), http = parsedUrl.scheme === "http" ? require("http") : require("https"), method = this.options["method"], payload;
+  var headers = {"Accept":"application/json;text/plain"};
+  goog.object.extend(headers, this.options["headers"]);
+  var requestOpts = {"host":parsedUrl.host.split(":")[0], "port":parsedUrl.port, "path":parsedUrl.pathString, "method":this.options["method"].toUpperCase()};
+  if (method === "GET") {
+    requestOpts["path"] += (/\?/.test(requestOpts["path"]) ? "" : "?") + fb.login.transports.util.querystring(params);
+    payload = null;
+  } else {
+    var contentType = this.options["headers"]["content_type"];
+    if (contentType === "application/json") {
+      payload = fb.util.json.stringify(params);
+    }
+    if (contentType === "application/x-www-form-urlencoded") {
+      payload = fb.login.transports.util.querystring(params);
+    }
+    headers["Content-Length"] = Buffer["byteLength"](payload, "utf8");
+  }
+  requestOpts["headers"] = headers;
+  var req = http["request"](requestOpts, function(response) {
+    var res = "";
+    response["setEncoding"]("utf8");
+    response["on"]("data", function(d) {
+      res += d;
+    });
+    response["on"]("end", function() {
+      try {
+        res = fb.util.json.eval(res + "");
+      } catch (e) {
+      }
+      if (cb) {
+        cb(null, res);
+        cb = null;
+      }
+    });
+  });
+  if (method !== "GET") {
+    req["write"](payload);
+  }
+  req["on"]("error", function(e) {
+    if (e && e["code"] && (e["code"] === "ENOTFOUND" || e["code"] === "ENETDOWN")) {
+      cb(fb.login.Errors.get("NETWORK_ERROR"));
+    } else {
+      cb(fb.login.Errors.get("SERVER_ERROR"));
+    }
+    cb = null;
+  });
+  req["end"]();
+};
+fb.login.transports.NodeHttp["isAvailable"] = function() {
+  return NODE_CLIENT;
+};
+fb.login.transports.NodeHttp.prototype.classification = function() {
+  return "json";
 };
 goog.provide("fb.login.transports.Popup");
 goog.require("fb.core.util");
@@ -8346,6 +8928,7 @@ goog.require("fb.login.RequestInfo");
 goog.require("fb.login.SessionManager");
 goog.require("fb.login.transports.CordovaInAppBrowser");
 goog.require("fb.login.transports.JSONP");
+goog.require("fb.login.transports.NodeHttp");
 goog.require("fb.login.transports.Popup");
 goog.require("fb.login.transports.Redirect");
 goog.require("fb.login.transports.XHR");
@@ -8474,7 +9057,13 @@ fb.login.AuthenticationManager.prototype.handleBadAuthStatus_ = function() {
 };
 fb.login.AuthenticationManager.prototype.authWithCredential = function(provider, opt_params, opt_options, opt_onComplete) {
   this.checkServerSettingsOrThrow();
-  var transports = [fb.login.transports.XHR, fb.login.transports.JSONP], requestInfo = new fb.login.RequestInfo(opt_options || {}, {}, opt_params || {});
+  var requestInfo = new fb.login.RequestInfo(opt_options || {}, {}, opt_params || {});
+  var transports;
+  if (NODE_CLIENT) {
+    transports = [fb.login.transports.NodeHttp];
+  } else {
+    transports = [fb.login.transports.XHR, fb.login.transports.JSONP];
+  }
   this.authWithTransports_(transports, "/auth/" + provider, requestInfo, opt_onComplete);
 };
 fb.login.AuthenticationManager.prototype.authWithPopup = function(provider, opt_params, opt_onComplete) {
@@ -8550,6 +9139,17 @@ fb.login.AuthenticationManager.prototype.changePassword = function(params, opt_o
     fb.core.util.callUserCallback(opt_onComplete, err);
   });
 };
+fb.login.AuthenticationManager.prototype.changeEmail = function(params, opt_onComplete) {
+  this.checkServerSettingsOrThrow();
+  var path = "/users/" + encodeURIComponent(params["oldEmail"]) + "/email";
+  var requestInfo = fb.login.RequestInfo.fromParams(params);
+  requestInfo.serverParams["_method"] = "PUT";
+  requestInfo.serverParams["email"] = params["newEmail"];
+  requestInfo.serverParams["password"] = params["password"];
+  this.requestWithCredential(path, requestInfo, function(err, res) {
+    fb.core.util.callUserCallback(opt_onComplete, err);
+  });
+};
 fb.login.AuthenticationManager.prototype.resetPassword = function(params, opt_onComplete) {
   this.checkServerSettingsOrThrow();
   var path = "/users/" + encodeURIComponent(params["email"]) + "/password";
@@ -8560,7 +9160,12 @@ fb.login.AuthenticationManager.prototype.resetPassword = function(params, opt_on
   });
 };
 fb.login.AuthenticationManager.prototype.requestWithCredential = function(path, requestInfo, opt_onComplete) {
-  var transports = [fb.login.transports.XHR, fb.login.transports.JSONP];
+  var transports;
+  if (NODE_CLIENT) {
+    transports = [fb.login.transports.NodeHttp];
+  } else {
+    transports = [fb.login.transports.XHR, fb.login.transports.JSONP];
+  }
   this.requestWithTransports_(transports, path, requestInfo, opt_onComplete);
 };
 fb.login.AuthenticationManager.prototype.authWithTransports_ = function(transports, path, requestInfo, opt_onComplete) {
@@ -8593,7 +9198,7 @@ fb.login.AuthenticationManager.prototype.requestWithTransports_ = function(trans
   var transport = availableTransports.shift();
   var transportObj = new transport(requestInfo.transportOptions);
   var request = fb.util.obj.clone(requestInfo.serverParams);
-  request["v"] = "js-" + CLIENT_VERSION;
+  request["v"] = this.versionString();
   request["transport"] = transportObj.classification();
   request["suppress_status_codes"] = true;
   var url = fb.login.transports.util.getBaseUrl() + "/" + this.repoInfo_.namespace + path;
@@ -8623,6 +9228,9 @@ fb.login.AuthenticationManager.prototype.updateAuthStatus_ = function(authData) 
 fb.login.AuthenticationManager.prototype.getInitialEvent = function(event) {
   fb.core.util.assert(event === "auth_status", 'initial event must be of type "auth_status"');
   return[this.authData_];
+};
+fb.login.AuthenticationManager.prototype.versionString = function() {
+  return(NODE_CLIENT ? "node-" : "js-") + CLIENT_VERSION;
 };
 fb.login.AuthenticationManager.prototype.checkServerSettingsOrThrow = function() {
   if (this.repoInfo_.isCustomHost() && fb.login.Constants.SERVER_HOST === fb.login.Constants.DEFAULT_SERVER_HOST) {
@@ -8675,958 +9283,438 @@ fb.core.util.ServerValues.resolveDeferredValueSnapshot = function(node, serverVa
     return newNode;
   }
 };
-goog.provide("fb.core.view.Change");
-fb.core.view.Change = function(type, snapshotNode, childName, oldSnap) {
-  this.type = type;
-  this.snapshotNode = snapshotNode;
-  this.childName = childName;
-  this.prevName = null;
-  this.oldSnap = oldSnap;
+goog.provide("fb.core.view.CacheNode");
+fb.core.view.CacheNode = function(node, fullyInitialized, filtered) {
+  this.node_ = node;
+  this.fullyInitialized_ = fullyInitialized;
+  this.filtered_ = filtered;
 };
-fb.core.view.Change.CHILD_ADDED = "child_added";
-fb.core.view.Change.CHILD_REMOVED = "child_removed";
-fb.core.view.Change.CHILD_CHANGED = "child_changed";
-fb.core.view.Change.CHILD_MOVED = "child_moved";
-fb.core.view.Change.VALUE = "value";
-fb.core.view.Change.CHILDREN_ADDED = "children_added";
-fb.core.view.Change.CHILDREN_REMOVED = "children_removed";
-goog.provide("fb.core.view.CacheDiffer");
-goog.require("fb.core.view.Change");
-fb.core.view.CacheDiffer = function() {
+fb.core.view.CacheNode.prototype.isFullyInitialized = function() {
+  return this.fullyInitialized_;
 };
-fb.core.view.CacheDiffer.Default = new fb.core.view.CacheDiffer;
-fb.core.view.CacheDiffer.prototype.diff = function(oldCache, newCache, changedPath) {
-  var front;
-  var snap;
-  var newEventCache = (newCache.getEventCache());
-  var oldEventCache = oldCache.getEventCache();
-  if (changedPath.isEmpty()) {
-    if (newCache.isComplete()) {
-      var changes = this.diff_(oldEventCache, newEventCache);
-      if (changes.length === 0 && !oldCache.isComplete()) {
-        changes.push(new fb.core.view.Change("value", newEventCache));
-      }
-      return changes;
-    } else {
-      if (oldEventCache) {
-        return this.diffChildren(oldEventCache, newEventCache);
-      } else {
-        return this.enumerateChildAddedChanges_(newEventCache);
-      }
-    }
+fb.core.view.CacheNode.prototype.isFiltered = function() {
+  return this.filtered_;
+};
+fb.core.view.CacheNode.prototype.isCompleteForPath = function(path) {
+  if (path.isEmpty()) {
+    return this.isFullyInitialized() && !this.filtered_;
   } else {
-    if (changedPath.getFront() === ".priority") {
-      if (newCache.isComplete()) {
-        if (!oldEventCache || !oldEventCache.equals(newEventCache)) {
-          return[new fb.core.view.Change("value", newEventCache)];
-        }
-      }
-      return[];
-    } else {
-      if (newCache.isComplete() || changedPath.getLength() === 1) {
-        front = changedPath.getFront();
-        snap = newEventCache.getImmediateChild(front);
-        return this.diffChildChanged(oldCache, newCache, front, snap);
-      } else {
-        front = changedPath.getFront();
-        if (newEventCache.hasChild(front)) {
-          snap = newEventCache.getImmediateChild(front);
-          return this.diffChildChanged(oldCache, newCache, front, snap);
-        } else {
-          return[];
-        }
-      }
-    }
+    var childKey = path.getFront();
+    return this.isCompleteForChild(childKey);
   }
 };
-fb.core.view.CacheDiffer.prototype.diff_ = function(oldSnap, newSnap) {
-  var changes = [];
-  if (oldSnap) {
-    if (!oldSnap.equals(newSnap)) {
-      if (oldSnap.isLeafNode()) {
-        changes = this.enumerateChildAddedChanges_(newSnap);
-        changes.push(new fb.core.view.Change("value", newSnap));
-      } else {
-        if (newSnap.isLeafNode()) {
-          changes = this.enumerateChildRemovedChanges_(oldSnap);
-          changes.push(new fb.core.view.Change("value", newSnap));
-        } else {
-          changes = this.diffChildren(oldSnap, newSnap);
-          changes.push(new fb.core.view.Change("value", newSnap));
-        }
-      }
-    }
-  } else {
-    changes = this.enumerateChildAddedChanges_(newSnap);
-    changes.push(new fb.core.view.Change("value", newSnap));
-  }
-  return changes;
+fb.core.view.CacheNode.prototype.isCompleteForChild = function(key) {
+  return this.isFullyInitialized() && !this.filtered_ || this.node_.hasChild(key);
 };
-fb.core.view.CacheDiffer.prototype.diffChildChanged = function(oldCache, newCache, childName, snap) {
-  var changes;
-  var oldEventSnap = oldCache.getEventCache();
-  if (oldEventSnap) {
-    if (oldEventSnap.hasChild(childName)) {
-      var oldChild = oldEventSnap.getImmediateChild(childName);
-      if (oldChild.equals(snap)) {
-        changes = [];
-      } else {
-        if (snap.isEmpty()) {
-          changes = [new fb.core.view.Change("child_removed", oldChild, childName)];
-        } else {
-          changes = [new fb.core.view.Change("child_changed", snap, childName, oldChild)];
-        }
-      }
-    } else {
-      if (snap.isEmpty()) {
-        changes = [];
-      } else {
-        changes = [new fb.core.view.Change("child_added", snap, childName)];
-      }
-    }
-  } else {
-    if (!snap.isEmpty()) {
-      changes = [new fb.core.view.Change("child_added", snap, childName)];
-    } else {
-      changes = [];
-    }
-  }
-  if (changes.length > 0 && newCache.isComplete()) {
-    changes.push(new fb.core.view.Change("value", (newCache.getEventCache())));
-  }
-  return changes;
+fb.core.view.CacheNode.prototype.getNode = function() {
+  return this.node_;
 };
-fb.core.view.CacheDiffer.prototype.enumerateChildAddedChanges_ = function(snap) {
-  var changes = [];
-  if (!snap.isLeafNode() && !snap.isEmpty()) {
-    changes.push(new fb.core.view.Change("children_added", snap));
-  }
-  return changes;
+goog.provide("fb.core.view.ViewCache");
+goog.require("fb.core.view.CacheNode");
+fb.core.view.ViewCache = function(eventCache, serverCache) {
+  this.eventCache_ = eventCache;
+  this.serverCache_ = serverCache;
 };
-fb.core.view.CacheDiffer.prototype.enumerateChildRemovedChanges_ = function(snap) {
-  var changes = [];
-  if (!snap.isLeafNode() && !snap.isEmpty()) {
-    changes.push(new fb.core.view.Change("children_removed", snap));
-  }
-  return changes;
+fb.core.view.ViewCache.Empty = new fb.core.view.ViewCache(new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false), new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false));
+fb.core.view.ViewCache.prototype.updateEventSnap = function(eventSnap, complete, filtered) {
+  return new fb.core.view.ViewCache(new fb.core.view.CacheNode(eventSnap, complete, filtered), this.serverCache_);
 };
-fb.core.view.CacheDiffer.prototype.diffChildren = function(oldNode, newNode) {
-  var changes = [];
-  var addedChildList = [], removedChildList = [], changedChildList = [];
-  var addedChildMap = {}, removedChildMap = {};
-  var oldIterator, newIterator, oldChild, newChild, childChanged;
-  oldIterator = oldNode.getIterator(fb.core.snap.PriorityIndex);
-  oldChild = oldIterator.getNext();
-  newIterator = newNode.getIterator(fb.core.snap.PriorityIndex);
-  newChild = newIterator.getNext();
-  var cmp = fb.core.snap.PriorityIndex.getCompare();
-  while (oldChild !== null || newChild !== null) {
-    var comparison;
-    if (!oldChild) {
-      comparison = 1;
-    } else {
-      if (!newChild) {
-        comparison = -1;
-      } else {
-        comparison = cmp(oldChild, newChild);
-      }
-    }
-    if (comparison < 0) {
-      var addedIndex = fb.util.obj.get(addedChildMap, oldChild.name);
-      if (goog.isDef(addedIndex)) {
-        changedChildList.push(addedChildList[addedIndex]);
-        addedChildList[addedIndex] = null;
-      } else {
-        removedChildMap[oldChild.name] = removedChildList.length;
-        removedChildList.push(oldChild);
-      }
-      oldChild = oldIterator.getNext();
-    } else {
-      if (comparison > 0) {
-        var removedIndex = fb.util.obj.get(removedChildMap, newChild.name);
-        if (goog.isDef(removedIndex)) {
-          changedChildList.push(newChild);
-          removedChildList[removedIndex] = null;
-        } else {
-          addedChildMap[newChild.name] = addedChildList.length;
-          addedChildList.push(newChild);
-        }
-        newChild = newIterator.getNext();
-      } else {
-        childChanged = oldChild.node.hash() !== newChild.node.hash();
-        if (childChanged) {
-          changedChildList.push(newChild);
-        }
-        oldChild = oldIterator.getNext();
-        newChild = newIterator.getNext();
-      }
-    }
-  }
-  for (var i = 0;i < removedChildList.length;i++) {
-    var removedChild = removedChildList[i];
-    if (removedChild) {
-      changes.push(new fb.core.view.Change("child_removed", removedChild.node, removedChild.name));
-    }
-  }
-  for (i = 0;i < addedChildList.length;i++) {
-    var addedChild = addedChildList[i];
-    if (addedChild) {
-      changes.push(new fb.core.view.Change("child_added", addedChild.node, addedChild.name));
-    }
-  }
-  for (i = 0;i < changedChildList.length;i++) {
-    var changedChild = changedChildList[i];
-    changes.push(new fb.core.view.Change("child_changed", changedChild.node, changedChild.name, oldNode.getImmediateChild(changedChild.name)));
-  }
-  return changes;
+fb.core.view.ViewCache.prototype.updateServerSnap = function(serverSnap, complete, filtered) {
+  return new fb.core.view.ViewCache(this.eventCache_, new fb.core.view.CacheNode(serverSnap, complete, filtered));
 };
-fb.core.view.LimitedCacheDiffer = function(itemLimit, index, reverse) {
-  fb.core.view.CacheDiffer.call(this);
-  this.itemLimit_ = itemLimit;
-  this.reverse_ = reverse;
-  this.index_ = index;
+fb.core.view.ViewCache.prototype.getEventCache = function() {
+  return this.eventCache_;
 };
-goog.inherits(fb.core.view.LimitedCacheDiffer, fb.core.view.CacheDiffer);
-fb.core.view.LimitedCacheDiffer.prototype.diffChildChanged = function(oldCache, newCache, childName, snap) {
-  var oldEventCache = oldCache.getEventCache() || fb.core.snap.EMPTY_NODE;
-  var newEventCache = newCache.getEventCache() || fb.core.snap.EMPTY_NODE;
-  if (oldEventCache.numChildren() < this.itemLimit_ || newEventCache.numChildren() < this.itemLimit_) {
-    return goog.base(this, "diffChildChanged", oldCache, newCache, childName, snap);
-  } else {
-    fb.core.util.assert(!oldEventCache.isLeafNode() && !newEventCache.isLeafNode(), "If it's a leaf node, we should have hit the above case.");
-    var firstChild;
-    var lastChild;
-    var changes = [];
-    var oldChild = oldEventCache.getImmediateChild(childName);
-    if (oldChild.isEmpty()) {
-      if (newEventCache.hasChild(childName)) {
-        if (this.reverse_) {
-          firstChild = oldEventCache.getFirstChild(this.index_);
-          changes.push(new fb.core.view.Change("child_removed", firstChild.node, firstChild.name));
-        } else {
-          lastChild = oldEventCache.getLastChild(this.index_);
-          changes.push(new fb.core.view.Change("child_removed", lastChild.node, lastChild.name));
-        }
-        changes.push(new fb.core.view.Change("child_added", snap, childName));
-      } else {
-      }
-    } else {
-      if (newEventCache.hasChild(childName)) {
-        if (!snap.equals(oldChild)) {
-          changes.push(new fb.core.view.Change("child_changed", snap, childName, oldEventCache.getImmediateChild(childName)));
-        }
-      } else {
-        changes.push(new fb.core.view.Change("child_removed", oldChild, childName));
-        if (this.reverse_) {
-          firstChild = newEventCache.getFirstChild(this.index_);
-          changes.push(new fb.core.view.Change("child_added", firstChild.node, firstChild.name));
-        } else {
-          lastChild = newEventCache.getLastChild(this.index_);
-          changes.push(new fb.core.view.Change("child_added", lastChild.node, lastChild.name));
-        }
-      }
-    }
-    if (changes.length > 0 && newCache.isComplete()) {
-      changes.push(new fb.core.view.Change("value", newEventCache));
-    }
-    return changes;
-  }
+fb.core.view.ViewCache.prototype.getCompleteEventSnap = function() {
+  return this.eventCache_.isFullyInitialized() ? this.eventCache_.getNode() : null;
+};
+fb.core.view.ViewCache.prototype.getServerCache = function() {
+  return this.serverCache_;
+};
+fb.core.view.ViewCache.prototype.getCompleteServerSnap = function() {
+  return this.serverCache_.isFullyInitialized() ? this.serverCache_.getNode() : null;
 };
 goog.provide("fb.core.view.ViewProcessor");
-fb.core.view.ViewProcessor = function() {
+goog.require("fb.core.view.CompleteChildSource");
+fb.core.view.ProcessorResult = function(viewCache, changes) {
+  this.viewCache = viewCache;
+  this.changes = changes;
 };
-fb.core.view.ViewProcessor.prototype.applyOperation = function(oldCache, operation, writesCache, serverCache) {
-  var constrainNode;
+fb.core.view.ViewProcessor = function(filter) {
+  this.filter_ = filter;
+};
+fb.core.view.ViewProcessor.prototype.assertIndexed = function(viewCache) {
+  fb.core.util.assert(viewCache.getEventCache().getNode().isIndexed(this.filter_.getIndex()), "Event snap not indexed");
+  fb.core.util.assert(viewCache.getServerCache().getNode().isIndexed(this.filter_.getIndex()), "Server snap not indexed");
+};
+fb.core.view.ViewProcessor.prototype.applyOperation = function(oldViewCache, operation, writesCache, optCompleteCache) {
+  var accumulator = new fb.core.view.ChildChangeAccumulator;
+  var newViewCache, constrainNode;
   if (operation.type === fb.core.OperationType.OVERWRITE) {
     var overwrite = (operation);
     if (overwrite.source.fromUser) {
-      return this.applyUserOverwrite(oldCache, overwrite.path, overwrite.snap, writesCache, serverCache);
+      newViewCache = this.applyUserOverwrite_(oldViewCache, overwrite.path, overwrite.snap, writesCache, optCompleteCache, accumulator);
     } else {
       fb.core.util.assert(overwrite.source.fromServer, "Unknown source.");
       constrainNode = overwrite.source.tagged;
-      return this.applyServerOverwrite(oldCache, overwrite.path, overwrite.snap, writesCache, serverCache, constrainNode);
+      newViewCache = this.applyServerOverwrite_(oldViewCache, overwrite.path, overwrite.snap, writesCache, optCompleteCache, constrainNode, accumulator);
     }
   } else {
     if (operation.type === fb.core.OperationType.MERGE) {
       var merge = (operation);
       if (merge.source.fromUser) {
-        return this.applyUserMerge(oldCache, merge.path, merge.children, writesCache, serverCache);
+        newViewCache = this.applyUserMerge_(oldViewCache, merge.path, merge.children, writesCache, optCompleteCache, accumulator);
       } else {
         fb.core.util.assert(merge.source.fromServer, "Unknown source.");
         constrainNode = merge.source.tagged;
-        return this.applyServerMerge(oldCache, merge.path, merge.children, writesCache, serverCache, constrainNode);
+        newViewCache = this.applyServerMerge_(oldViewCache, merge.path, merge.children, writesCache, optCompleteCache, constrainNode, accumulator);
       }
     } else {
       if (operation.type === fb.core.OperationType.ACK_USER_WRITE) {
-        var ackWrite = (operation);
-        if (!ackWrite.revert) {
-          return this.ackUserWrite(oldCache, ackWrite.path, writesCache, serverCache);
+        var ackUserWrite = (operation);
+        if (!ackUserWrite.revert) {
+          newViewCache = this.ackUserWrite_(oldViewCache, ackUserWrite.path, writesCache, optCompleteCache, accumulator);
         } else {
-          return this.revertUserWrite(oldCache, ackWrite.path, writesCache, serverCache);
+          newViewCache = this.revertUserWrite_(oldViewCache, ackUserWrite.path, writesCache, optCompleteCache, accumulator);
         }
       } else {
         if (operation.type === fb.core.OperationType.LISTEN_COMPLETE) {
-          var listenComplete = (operation);
-          return this.listenComplete(oldCache, listenComplete.path, writesCache, serverCache);
+          newViewCache = this.listenComplete_(oldViewCache, operation.path, writesCache, optCompleteCache, accumulator);
         } else {
           throw fb.core.util.assertionError("Unknown operation type: " + operation.type);
         }
       }
     }
   }
+  var changes = accumulator.getChanges();
+  this.maybeAddValueEvent_(oldViewCache, newViewCache, changes);
+  return new fb.core.view.ProcessorResult(newViewCache, changes);
 };
-fb.core.view.ViewProcessor.prototype.assertIndexed = function(cache) {
-  this.assertSnapIndexed(cache.serverSnap);
-  this.assertSnapIndexed(cache.serverChildren);
-  this.assertSnapIndexed(cache.eventSnap);
-  this.assertSnapIndexed(cache.eventChildren);
+fb.core.view.ViewProcessor.prototype.maybeAddValueEvent_ = function(oldViewCache, newViewCache, accumulator) {
+  var eventSnap = newViewCache.getEventCache();
+  if (eventSnap.isFullyInitialized()) {
+    var isLeafOrEmpty = eventSnap.getNode().isLeafNode() || eventSnap.getNode().isEmpty();
+    var oldCompleteSnap = oldViewCache.getCompleteEventSnap();
+    if (accumulator.length > 0 || !oldViewCache.getEventCache().isFullyInitialized() || isLeafOrEmpty && !eventSnap.getNode().equals((oldCompleteSnap)) || !eventSnap.getNode().getPriority().equals(oldCompleteSnap.getPriority())) {
+      accumulator.push(fb.core.view.Change.valueChange((newViewCache.getCompleteEventSnap())));
+    }
+  }
 };
-fb.core.view.ViewProcessor.prototype.applyQueryToCache = function(cache, constrainServerNode) {
-  return new fb.core.view.Cache(cache.serverSnap && this.applyQuery(cache.serverSnap, constrainServerNode), cache.serverChildren && this.applyQuery(cache.serverChildren, constrainServerNode), cache.eventSnap && this.applyQuery(cache.eventSnap), cache.eventChildren && this.applyQuery(cache.eventChildren));
+fb.core.view.ViewProcessor.prototype.generateEventCacheAfterServerEvent_ = function(viewCache, changePath, writesCache, source, accumulator) {
+  var oldEventSnap = viewCache.getEventCache();
+  if (writesCache.shadowingWrite(changePath) != null) {
+    return viewCache;
+  } else {
+    var newEventCache, serverNode;
+    if (changePath.isEmpty()) {
+      fb.core.util.assert(viewCache.getServerCache().isFullyInitialized(), "If change path is empty, we must have complete server data");
+      if (this.filter_.filtersNodes()) {
+        var serverCache = viewCache.getCompleteServerSnap();
+        var completeChildren = serverCache instanceof fb.core.snap.ChildrenNode ? serverCache : fb.core.snap.EMPTY_NODE;
+        var completeEventChildren = writesCache.calcCompleteEventChildren(completeChildren);
+        newEventCache = this.filter_.updateFullNode(viewCache.getEventCache().getNode(), completeEventChildren, accumulator);
+      } else {
+        var completeNode = (writesCache.calcCompleteEventCache(viewCache.getCompleteServerSnap()));
+        newEventCache = this.filter_.updateFullNode(viewCache.getEventCache().getNode(), completeNode, accumulator);
+      }
+    } else {
+      var childKey = changePath.getFront();
+      if (childKey == ".priority") {
+        fb.core.util.assert(changePath.getLength() == 1, "Can't have a priority with additional path components");
+        var oldEventNode = oldEventSnap.getNode();
+        serverNode = viewCache.getServerCache().getNode();
+        var updatedPriority = writesCache.calcEventCacheAfterServerOverwrite(changePath, oldEventNode, serverNode);
+        if (updatedPriority != null) {
+          newEventCache = this.filter_.updatePriority(oldEventNode, updatedPriority);
+        } else {
+          newEventCache = oldEventSnap.getNode();
+        }
+      } else {
+        var childChangePath = changePath.popFront();
+        var newEventChild;
+        if (oldEventSnap.isCompleteForChild(childKey)) {
+          serverNode = viewCache.getServerCache().getNode();
+          var eventChildUpdate = writesCache.calcEventCacheAfterServerOverwrite(changePath, oldEventSnap.getNode(), serverNode);
+          if (eventChildUpdate != null) {
+            newEventChild = oldEventSnap.getNode().getImmediateChild(childKey).updateChild(childChangePath, eventChildUpdate);
+          } else {
+            newEventChild = oldEventSnap.getNode().getImmediateChild(childKey);
+          }
+        } else {
+          newEventChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
+        }
+        if (newEventChild != null) {
+          newEventCache = this.filter_.updateChild(oldEventSnap.getNode(), childKey, newEventChild, source, accumulator);
+        } else {
+          newEventCache = oldEventSnap.getNode();
+        }
+      }
+    }
+    return viewCache.updateEventSnap(newEventCache, oldEventSnap.isFullyInitialized() || changePath.isEmpty(), this.filter_.filtersNodes());
+  }
 };
-fb.core.view.ViewProcessor.prototype.indexSnap = goog.abstractMethod;
-fb.core.view.ViewProcessor.prototype.isIndexed = goog.abstractMethod;
-fb.core.view.ViewProcessor.prototype.assertSnapIndexed = function(snap) {
-  fb.core.util.assert(!snap || this.isIndexed(snap), "Expected an indexed snap");
+fb.core.view.ViewProcessor.prototype.applyServerOverwrite_ = function(oldViewCache, changePath, changedSnap, writesCache, optCompleteCache, constrainServerNode, accumulator) {
+  var oldServerSnap = oldViewCache.getServerCache();
+  var newServerCache;
+  var serverFilter = constrainServerNode ? this.filter_ : this.filter_.getIndexedFilter();
+  if (changePath.isEmpty()) {
+    newServerCache = serverFilter.updateFullNode(oldServerSnap.getNode(), changedSnap, null);
+  } else {
+    if (serverFilter.filtersNodes() && !oldServerSnap.isFiltered()) {
+      var newServerNode = oldServerSnap.getNode().updateChild(changePath, changedSnap);
+      newServerCache = serverFilter.updateFullNode(oldServerSnap.getNode(), newServerNode, null);
+    } else {
+      var childKey = changePath.getFront();
+      if (!oldServerSnap.isCompleteForPath(changePath) && changePath.getLength() > 1) {
+        return oldViewCache;
+      }
+      var childNode = oldServerSnap.getNode().getImmediateChild(childKey);
+      var newChildNode = childNode.updateChild(changePath.popFront(), changedSnap);
+      if (childKey == ".priority") {
+        newServerCache = serverFilter.updatePriority(oldServerSnap.getNode(), newChildNode);
+      } else {
+        newServerCache = serverFilter.updateChild(oldServerSnap.getNode(), childKey, newChildNode, fb.core.view.NO_COMPLETE_CHILD_SOURCE, null);
+      }
+    }
+  }
+  var newViewCache = oldViewCache.updateServerSnap(newServerCache, oldServerSnap.isFullyInitialized() || changePath.isEmpty(), serverFilter.filtersNodes());
+  var source = new fb.core.view.WriteTreeCompleteChildSource(writesCache, newViewCache, optCompleteCache);
+  return this.generateEventCacheAfterServerEvent_(newViewCache, changePath, writesCache, source, accumulator);
 };
-fb.core.view.ViewProcessor.prototype.applyUserOverwrite = function(cache, path, snap, writesCache, serverCache) {
-  this.assertIndexed(cache);
+fb.core.view.ViewProcessor.prototype.applyUserOverwrite_ = function(oldViewCache, changePath, changedSnap, writesCache, optCompleteCache, accumulator) {
+  var oldEventSnap = oldViewCache.getEventCache();
+  var newViewCache, newEventCache;
+  var source = new fb.core.view.WriteTreeCompleteChildSource(writesCache, oldViewCache, optCompleteCache);
+  if (changePath.isEmpty()) {
+    newEventCache = this.filter_.updateFullNode(oldViewCache.getEventCache().getNode(), changedSnap, accumulator);
+    newViewCache = oldViewCache.updateEventSnap(newEventCache, true, this.filter_.filtersNodes());
+  } else {
+    var childKey = changePath.getFront();
+    if (childKey === ".priority") {
+      newEventCache = this.filter_.updatePriority(oldViewCache.getEventCache().getNode(), changedSnap);
+      newViewCache = oldViewCache.updateEventSnap(newEventCache, oldEventSnap.isFullyInitialized(), oldEventSnap.isFiltered());
+    } else {
+      var childChangePath = changePath.popFront();
+      var oldChild = oldEventSnap.getNode().getImmediateChild(childKey);
+      var newChild;
+      if (childChangePath.isEmpty()) {
+        newChild = changedSnap;
+      } else {
+        var childNode = source.getCompleteChild(childKey);
+        if (childNode != null) {
+          if (childChangePath.getBack() === ".priority" && childNode.getChild((childChangePath.parent())).isEmpty()) {
+            newChild = childNode;
+          } else {
+            newChild = childNode.updateChild(childChangePath, changedSnap);
+          }
+        } else {
+          newChild = fb.core.snap.EMPTY_NODE;
+        }
+      }
+      if (!oldChild.equals(newChild)) {
+        var newEventSnap = this.filter_.updateChild(oldEventSnap.getNode(), childKey, newChild, source, accumulator);
+        newViewCache = oldViewCache.updateEventSnap(newEventSnap, oldEventSnap.isFullyInitialized(), this.filter_.filtersNodes());
+      } else {
+        newViewCache = oldViewCache;
+      }
+    }
+  }
+  return newViewCache;
+};
+fb.core.view.ViewProcessor.cacheHasChild_ = function(viewCache, childKey) {
+  return viewCache.getEventCache().isCompleteForChild(childKey);
+};
+fb.core.view.ViewProcessor.prototype.applyUserMerge_ = function(viewCache, path, changedChildren, writesCache, serverCache, accumulator) {
+  var self = this;
+  var curViewCache = viewCache;
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
+    if (fb.core.view.ViewProcessor.cacheHasChild_(viewCache, writePath.getFront())) {
+      curViewCache = self.applyUserOverwrite_(curViewCache, writePath, childNode, writesCache, serverCache, accumulator);
+    }
+  });
+  changedChildren.foreach(function(relativePath, childNode) {
+    var writePath = path.child(relativePath);
+    if (!fb.core.view.ViewProcessor.cacheHasChild_(viewCache, writePath.getFront())) {
+      curViewCache = self.applyUserOverwrite_(curViewCache, writePath, childNode, writesCache, serverCache, accumulator);
+    }
+  });
+  return curViewCache;
+};
+fb.core.view.ViewProcessor.prototype.applyMerge_ = function(node, merge) {
+  merge.foreach(function(relativePath, childNode) {
+    node = node.updateChild(relativePath, childNode);
+  });
+  return node;
+};
+fb.core.view.ViewProcessor.prototype.applyServerMerge_ = function(viewCache, path, changedChildren, writesCache, serverCache, constrainServerNode, accumulator) {
+  if (viewCache.getServerCache().getNode().isEmpty() && !viewCache.getServerCache().isFullyInitialized()) {
+    return viewCache;
+  }
+  var curViewCache = viewCache;
+  var viewMergeTree;
   if (path.isEmpty()) {
-    var newEventSnap = this.applyQuery(snap);
-    return new fb.core.view.Cache(cache.serverSnap, cache.serverChildren, newEventSnap, null);
+    viewMergeTree = changedChildren;
   } else {
-    var eventCache = cache.getEventCache() || fb.core.snap.EMPTY_NODE;
-    var front = path.getFront();
-    if (path.getLength() === 1 || cache.eventSnap || eventCache.hasChild(front)) {
-      var newChild = eventCache.getImmediateChild(path.getFront()).updateChild(path.popFront(), snap);
-      return this.updateSingleChild(cache, path.getFront(), newChild, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
-    } else {
-      return cache;
-    }
+    viewMergeTree = fb.core.util.ImmutableTree.Empty.setTree(path, changedChildren);
   }
-};
-fb.core.view.ViewProcessor.prototype.applyUserMerge = function(cache, path, changedChildren, writesCache, serverCache) {
-  this.assertIndexed(cache);
+  var serverNode = viewCache.getServerCache().getNode();
   var self = this;
-  var curCache = cache;
-  changedChildren.foreach(function(relativePath, childNode) {
-    var writePath = path.child(relativePath);
-    if (self.cacheHasChild_(cache, writePath.getFront())) {
-      curCache = self.applyUserOverwrite(curCache, writePath, childNode, writesCache, serverCache);
+  viewMergeTree.children.inorderTraversal(function(childKey, childTree) {
+    if (serverNode.hasChild(childKey)) {
+      var serverChild = viewCache.getServerCache().getNode().getImmediateChild(childKey);
+      var newChild = self.applyMerge_(serverChild, childTree);
+      curViewCache = self.applyServerOverwrite_(curViewCache, new fb.core.util.Path(childKey), newChild, writesCache, serverCache, constrainServerNode, accumulator);
     }
   });
-  changedChildren.foreach(function(relativePath, childNode) {
-    var writePath = path.child(relativePath);
-    if (!self.cacheHasChild_(cache, writePath.getFront())) {
-      curCache = self.applyUserOverwrite(curCache, writePath, childNode, writesCache, serverCache);
+  viewMergeTree.children.inorderTraversal(function(childKey, childMergeTree) {
+    var isUnknownDeepMerge = !viewCache.getServerCache().isFullyInitialized() && childMergeTree.value == null;
+    if (!serverNode.hasChild(childKey) && !isUnknownDeepMerge) {
+      var serverChild = viewCache.getServerCache().getNode().getImmediateChild(childKey);
+      var newChild = self.applyMerge_(serverChild, childMergeTree);
+      curViewCache = self.applyServerOverwrite_(curViewCache, new fb.core.util.Path(childKey), newChild, writesCache, serverCache, constrainServerNode, accumulator);
     }
   });
-  return curCache;
+  return curViewCache;
 };
-fb.core.view.ViewProcessor.prototype.ackUserWrite = function(cache, path, writesCache, serverCache) {
-  var newEventSnap = cache.eventSnap;
-  var newEventChildren = cache.eventChildren;
-  var front;
-  var newChild;
-  this.assertIndexed(cache);
-  if (cache.serverSnap) {
-    fb.core.util.assert(newEventSnap, "If we have a server snap, we must have an event snap");
-    var eventUpdate = writesCache.calcEventCacheAfterServerOverwrite(path, cache.eventSnap, cache.serverSnap);
-    if (eventUpdate) {
-      if (path.isEmpty()) {
-        newEventSnap = this.applyQuery(eventUpdate);
-      } else {
-        front = path.getFront();
-        newChild = newEventSnap.updateChild(path, eventUpdate).getImmediateChild(front);
-        return this.updateSingleChild(cache, front, newChild, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
-      }
-    }
+fb.core.view.ViewProcessor.prototype.ackUserWrite_ = function(viewCache, ackPath, writesCache, optCompleteCache, accumulator) {
+  if (writesCache.shadowingWrite(ackPath) != null) {
+    return viewCache;
   } else {
-    if (cache.serverChildren) {
-      if (newEventSnap) {
-        var changed = false;
-        cache.serverChildren.forEachChild(fb.core.snap.PriorityIndex, function(childName, childNode) {
-          if (!changed && !newEventSnap.getImmediateChild(childName).equals(childNode)) {
-            changed = true;
-          }
-          if (changed) {
-            newEventSnap = newEventSnap.updateImmediateChild(childName, childNode);
-          }
-        });
-        if (changed) {
-          newEventSnap = this.applyQuery(newEventSnap);
-        }
+    var source = new fb.core.view.WriteTreeCompleteChildSource(writesCache, viewCache, optCompleteCache);
+    var oldEventCache = viewCache.getEventCache().getNode();
+    var newEventCache = oldEventCache;
+    if (viewCache.getServerCache().isFullyInitialized()) {
+      if (ackPath.isEmpty()) {
+        var update = (writesCache.calcCompleteEventCache(viewCache.getCompleteServerSnap()));
+        newEventCache = this.filter_.updateFullNode(viewCache.getEventCache().getNode(), update, accumulator);
       } else {
-        if (newEventChildren) {
-          fb.core.util.assert(path.getLength() > 0, "If it were an empty path, we would have an event snap");
-          front = path.getFront();
-          if (path.getLength() === 1 || newEventChildren.hasChild(front)) {
-            var eventChildrenUpdate = writesCache.calcEventCacheAfterServerOverwrite(path, newEventChildren, cache.serverChildren);
-            if (eventChildrenUpdate) {
-              newChild = newEventChildren.updateChild(path, eventChildrenUpdate).getImmediateChild(front);
-              return this.updateSingleChild(cache, front, newChild, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
+        if (ackPath.getFront() === ".priority") {
+          var updatedPriority = writesCache.calcCompleteChild(ackPath.getFront(), viewCache.getServerCache());
+          if (updatedPriority != null && !oldEventCache.isEmpty() && !oldEventCache.getPriority().equals(updatedPriority)) {
+            newEventCache = this.filter_.updatePriority(oldEventCache, updatedPriority);
+          }
+        } else {
+          var childKey = ackPath.getFront();
+          var updatedChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
+          if (updatedChild != null) {
+            newEventCache = this.filter_.updateChild(viewCache.getEventCache().getNode(), childKey, updatedChild, source, accumulator);
+          }
+        }
+      }
+    } else {
+      if (viewCache.getEventCache().isFullyInitialized()) {
+        newEventCache = oldEventCache;
+        var completeEventSnap = viewCache.getCompleteEventSnap();
+        if (!completeEventSnap.isLeafNode()) {
+          var self = this;
+          completeEventSnap = (completeEventSnap);
+          completeEventSnap.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+            var completeChild = writesCache.calcCompleteChild(key, viewCache.getServerCache());
+            if (completeChild != null) {
+              newEventCache = self.filter_.updateChild(newEventCache, key, completeChild, source, accumulator);
             }
+          });
+        }
+      } else {
+        fb.core.util.assert(!ackPath.isEmpty(), "If it were an empty path, we would have an event snap");
+        var childKey = ackPath.getFront();
+        if (ackPath.getLength() == 1 || viewCache.getEventCache().isCompleteForChild(childKey)) {
+          var completeChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
+          if (completeChild != null) {
+            newEventCache = this.filter_.updateChild(oldEventCache, childKey, completeChild, source, accumulator);
           }
         }
       }
     }
+    return viewCache.updateEventSnap(newEventCache, viewCache.getEventCache().isFullyInitialized() || ackPath.isEmpty(), this.filter_.filtersNodes());
   }
-  return new fb.core.view.Cache(cache.serverSnap, cache.serverChildren, newEventSnap, newEventChildren);
 };
-fb.core.view.ViewProcessor.prototype.revertUserWrite = function(cache, path, writesCache, serverCache) {
-  this.assertIndexed(cache);
-  var newEventSnap = cache.eventSnap;
-  var newEventChildren = cache.eventChildren;
-  if (cache.serverSnap) {
-    fb.core.util.assert(cache.eventSnap, "Must have event snap if we have server snap");
-    var toSetInEventSnap = writesCache.calcEventCacheAfterServerOverwrite(path, cache.eventSnap, cache.serverSnap);
-    if (toSetInEventSnap) {
-      newEventSnap = cache.eventSnap.updateChild(path, toSetInEventSnap);
-      if (path.isEmpty()) {
-        newEventSnap = this.applyQuery(newEventSnap);
-      } else {
-        var childName = path.getFront();
-        var newChild = newEventSnap.getImmediateChild(childName);
-        return this.updateSingleChild(cache, childName, newChild, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
-      }
-    }
+fb.core.view.ViewProcessor.prototype.revertUserWrite_ = function(viewCache, path, writesCache, optCompleteServerCache, accumulator) {
+  var complete;
+  if (writesCache.shadowingWrite(path) != null) {
+    return viewCache;
   } else {
-    if (cache.serverChildren) {
-      if (cache.eventSnap) {
-        var completeEventCache = writesCache.getCompleteWriteData();
-        if (completeEventCache) {
-          newEventSnap = this.applyQuery(completeEventCache);
+    var source = new fb.core.view.WriteTreeCompleteChildSource(writesCache, viewCache, optCompleteServerCache);
+    var oldEventCache = viewCache.getEventCache().getNode();
+    var newEventCache;
+    if (path.isEmpty() || path.getFront() === ".priority") {
+      var newNode;
+      if (viewCache.getServerCache().isFullyInitialized()) {
+        newNode = writesCache.calcCompleteEventCache(viewCache.getCompleteServerSnap());
+      } else {
+        var serverChildren = viewCache.getServerCache().getNode();
+        fb.core.util.assert(serverChildren instanceof fb.core.snap.ChildrenNode, "serverChildren would be complete if leaf node");
+        newNode = writesCache.calcCompleteEventChildren((serverChildren));
+      }
+      newNode = (newNode);
+      newEventCache = this.filter_.updateFullNode(oldEventCache, newNode, accumulator);
+    } else {
+      var childKey = path.getFront();
+      var newChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
+      if (newChild == null && viewCache.getServerCache().isCompleteForChild(childKey)) {
+        newChild = oldEventCache.getImmediateChild(childKey);
+      }
+      if (newChild != null) {
+        newEventCache = this.filter_.updateChild(oldEventCache, childKey, newChild, source, accumulator);
+      } else {
+        if (viewCache.getEventCache().getNode().hasChild(childKey)) {
+          newEventCache = this.filter_.updateChild(oldEventCache, childKey, fb.core.snap.EMPTY_NODE, source, accumulator);
         } else {
-          var childrenToSetInEventSnap = writesCache.calcEventCacheAfterServerOverwrite(path, cache.eventSnap, cache.serverChildren);
-          if (childrenToSetInEventSnap) {
-            newEventSnap = this.applyQuery(newEventSnap.updateChild(path, childrenToSetInEventSnap));
-          }
-        }
-      } else {
-        fb.core.util.assert(cache.eventChildren, "We must at least have complete children");
-        fb.core.util.assert(!path.isEmpty(), "If the path were empty, we would have an event snap from the set");
-        var toSetInEventChildren = writesCache.calcEventCacheAfterServerOverwrite(path, cache.eventChildren, cache.serverChildren);
-        if (toSetInEventChildren) {
-          newEventChildren = cache.eventChildren.updateChild(path, toSetInEventChildren);
-          newEventChildren = this.applyQuery(newEventChildren);
-        } else {
+          newEventCache = oldEventCache;
         }
       }
-    } else {
-      if (cache.eventSnap) {
-        var eventCache = writesCache.getCompleteWriteData();
-        if (eventCache) {
-          newEventSnap = this.applyQuery(eventCache);
-        }
-      } else {
-        if (cache.eventChildren) {
-          fb.core.util.assert(!path.isEmpty(), "If the path was empty, we would have an event snap");
-          var front = path.getFront();
-          if (cache.eventChildren.hasChild(front)) {
-            var newSnap = writesCache.childSnap(front);
-            if (newSnap) {
-              return this.updateSingleChild(cache, front, newSnap, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
-            } else {
-              return this.updateSingleChild(cache, front, fb.core.snap.EMPTY_NODE, cache.serverSnap, cache.serverChildren, writesCache, null);
-            }
-          } else {
-            fb.core.util.assert(path.getLength() > 1, "Must be a deep set being reverted");
-          }
+      if (newEventCache.isEmpty() && viewCache.getServerCache().isFullyInitialized()) {
+        complete = writesCache.calcCompleteEventCache(viewCache.getCompleteServerSnap());
+        if (complete.isLeafNode()) {
+          newEventCache = this.filter_.updateFullNode(newEventCache, complete, accumulator);
         }
       }
     }
-  }
-  return new fb.core.view.Cache(cache.serverSnap, cache.serverChildren, newEventSnap, newEventChildren);
-};
-fb.core.view.ViewProcessor.prototype.applyServerOverwrite = function(cache, changePath, changedSnap, writesCache, serverCache, constrainServerNode) {
-  var front;
-  this.assertIndexed(cache);
-  var newServerSnap = cache.serverSnap;
-  var newServerChildren = cache.serverChildren;
-  if (cache.serverSnap) {
-    if (changePath.isEmpty()) {
-      newServerSnap = this.applyQuery(changedSnap, constrainServerNode);
-    } else {
-      newServerSnap = this.applyQuery(cache.serverSnap.updateChild(changePath, changedSnap), constrainServerNode);
-    }
-  } else {
-    if (changePath.isEmpty()) {
-      newServerSnap = this.applyQuery(changedSnap, constrainServerNode);
-      newServerChildren = null;
-    } else {
-      if (changePath.getLength() === 1 && (cache.serverChildren || !changedSnap.isEmpty())) {
-        var oldServerChildren = cache.serverChildren || this.indexSnap(fb.core.snap.EMPTY_NODE);
-        newServerChildren = this.applyQuery((oldServerChildren.updateChild(changePath, changedSnap)), constrainServerNode);
-      } else {
-        if (cache.serverChildren) {
-          front = changePath.getFront();
-          if (cache.serverChildren.hasChild(front)) {
-            var newChild = cache.serverChildren.getImmediateChild(front).updateChild(changePath.popFront(), changedSnap);
-            newServerChildren = this.applyQuery(cache.serverChildren.updateImmediateChild(front, newChild), constrainServerNode);
-          } else {
-          }
-        } else {
-        }
-      }
-    }
-  }
-  var skipDiff = false;
-  var newEventSnap = cache.eventSnap;
-  var newEventChildren = cache.eventChildren;
-  if (newServerSnap !== cache.serverSnap || newServerChildren !== cache.serverChildren) {
-    if (newServerSnap && !newEventSnap) {
-      newEventSnap = this.applyQuery((writesCache.calcCompleteEventCache(newServerSnap)));
-      newEventChildren = null;
-    } else {
-      if (newServerSnap && newEventSnap && !changedSnap.isEmpty() && newServerSnap.getChild(changePath).equals(newEventSnap.getChild(changePath))) {
-        skipDiff = true;
-      } else {
-        var toSetInEventSnap = writesCache.calcEventCacheAfterServerOverwrite(changePath, newEventSnap, newServerSnap || newServerChildren);
-        if (toSetInEventSnap) {
-          if (changePath.isEmpty()) {
-            newEventSnap = this.applyQuery(toSetInEventSnap);
-            newEventChildren = null;
-          } else {
-            front = changePath.getFront();
-            var tail = changePath.popFront();
-            var newChild = this.newChildForChange_(cache, front, tail, toSetInEventSnap);
-            return this.updateSingleChild(cache, front, newChild, newServerSnap, newServerChildren, writesCache, serverCache);
-          }
-        } else {
-          skipDiff = true;
-        }
-      }
-    }
-  }
-  fb.core.util.assert(!skipDiff || newEventSnap === cache.eventSnap && newEventChildren === cache.eventChildren, "We thought we could skip diffing, but we changed the eventCache.");
-  return new fb.core.view.Cache(newServerSnap, newServerChildren, newEventSnap, newEventChildren);
-};
-fb.core.view.ViewProcessor.prototype.applyServerMerge = function(cache, path, changedChildren, writesCache, serverCache, constrainServerNode) {
-  if (!(cache.serverSnap || cache.serverChildren || !path.isEmpty())) {
-    return cache;
-  }
-  this.assertIndexed(cache);
-  var self = this;
-  var curCache = cache;
-  changedChildren.foreach(function(relativePath, childNode) {
-    var writePath = path.child(relativePath);
-    if (self.cacheHasChild_(cache, writePath.getFront())) {
-      curCache = self.applyServerOverwrite(curCache, writePath, childNode, writesCache, serverCache, constrainServerNode);
-    }
-  });
-  changedChildren.foreach(function(relativePath, childNode) {
-    var writePath = path.child(relativePath);
-    if (!self.cacheHasChild_(cache, writePath.getFront())) {
-      curCache = self.applyServerOverwrite(curCache, writePath, childNode, writesCache, serverCache, constrainServerNode);
-    }
-  });
-  return curCache;
-};
-fb.core.view.ViewProcessor.prototype.listenComplete = function(cache, changePath, writesCache, serverCache) {
-  this.assertIndexed(cache);
-  var serverNode = cache.getServerCache() || fb.core.snap.EMPTY_NODE;
-  return this.applyServerOverwrite(cache, changePath, serverNode.getChild(changePath), writesCache, serverCache, false);
-};
-fb.core.view.ViewProcessor.prototype.updateSingleChild = function(oldCache, childName, snap, serverSnap, serverChildren, writesCache, serverCache) {
-  var newEventSnap = oldCache.eventSnap;
-  var newEventChildren = oldCache.eventChildren;
-  if (newEventSnap) {
-    newEventSnap = this.applyQuery(newEventSnap.updateImmediateChild(childName, snap));
-  } else {
-    if (!newEventChildren) {
-      newEventChildren = this.indexSnap(fb.core.snap.EMPTY_NODE);
-    }
-    newEventChildren = this.applyQuery(newEventChildren.updateImmediateChild(childName, snap));
-  }
-  return new fb.core.view.Cache(serverSnap, serverChildren, newEventSnap, newEventChildren);
-};
-fb.core.view.ViewProcessor.prototype.applyQuery = function(snap, opt_constrain) {
-  return this.indexSnap(snap);
-};
-fb.core.view.ViewProcessor.prototype.newChildForChange_ = function(cache, childName, changePathTail, changeSnap) {
-  var oldChild;
-  if (cache.eventSnap) {
-    oldChild = cache.eventSnap.getImmediateChild(childName);
-  } else {
-    if (cache.eventChildren) {
-      if (cache.eventChildren.hasChild(childName)) {
-        oldChild = cache.eventChildren.getImmediateChild(childName);
-      } else {
-        fb.core.util.assert(changePathTail.isEmpty(), "According to precondition, this must be true");
-        oldChild = fb.core.snap.EMPTY_NODE;
-      }
-    } else {
-      if (changePathTail.isEmpty()) {
-        return changeSnap;
-      } else {
-        fb.core.util.assert(cache.serverSnap || cache.serverChildren, "If we do not have event data, we must have server data");
-        oldChild = (cache.serverSnap || cache.serverChildren).getImmediateChild(childName);
-      }
-    }
-  }
-  if (oldChild.isEmpty() && cache.getServerCache()) {
-    return cache.getServerCache().getImmediateChild(childName).updateChild(changePathTail, changeSnap);
-  } else {
-    return oldChild.updateChild(changePathTail, changeSnap);
+    complete = viewCache.getServerCache().isFullyInitialized() || writesCache.shadowingWrite(fb.core.util.Path.Empty) != null;
+    return viewCache.updateEventSnap(newEventCache, complete, this.filter_.filtersNodes());
   }
 };
-fb.core.view.ViewProcessor.prototype.cacheHasChild_ = function(cache, childName) {
-  var eventCache = cache.getEventCache();
-  var serverCache = cache.getServerCache();
-  return!!(eventCache && eventCache.hasChild(childName) || serverCache && serverCache.hasChild(childName));
-};
-goog.provide("fb.core.view.RangedViewProcessor");
-goog.require("fb.core.view.ViewProcessor");
-fb.core.view.RangedViewProcessor = function(queryParams) {
-  fb.core.view.ViewProcessor.call(this);
-  this.params = queryParams;
-  this.index = queryParams.getIndex();
-  this.startPost_ = this.genStartPost_();
-  this.endPost_ = this.genEndPost_();
-};
-goog.inherits(fb.core.view.RangedViewProcessor, fb.core.view.ViewProcessor);
-fb.core.view.RangedViewProcessor.prototype.indexSnap = function(snap) {
-  return snap.withIndex(this.index);
-};
-fb.core.view.RangedViewProcessor.prototype.isIndexed = function(snap) {
-  return snap.isIndexed(this.index);
-};
-fb.core.view.RangedViewProcessor.prototype.applyQuery = function(snap, opt_constrain) {
-  if (opt_constrain === false) {
-    return goog.base(this, "applyQuery", snap, false);
-  } else {
-    if (snap.isLeafNode()) {
-      return this.indexSnap(fb.core.snap.EMPTY_NODE);
-    } else {
-      var constrained = (this.indexSnap(snap));
-      var startPost = this.startPost_;
-      var endPost = this.endPost_;
-      var cmp = this.index.getCompare();
-      var iter = constrained.getIterator(this.index);
-      var next = iter.getNext();
-      while (next && cmp(startPost, next) > 0) {
-        constrained = constrained.updateImmediateChild(next.name, fb.core.snap.EMPTY_NODE);
-        next = iter.getNext();
-      }
-      iter = constrained.getIteratorFrom(endPost, this.index);
-      next = iter.getNext();
-      if (next && cmp(next, endPost) <= 0) {
-        next = iter.getNext();
-      }
-      while (next) {
-        constrained = constrained.updateImmediateChild(next.name, fb.core.snap.EMPTY_NODE);
-        next = iter.getNext();
-      }
-      return constrained;
-    }
-  }
-};
-fb.core.view.RangedViewProcessor.prototype.applyUserOverwrite = function(cache, path, snap, writesCache, serverCache) {
-  this.assertIndexed(cache);
-  if (path.getLength() > 1) {
-    var eventCache = cache.getEventCache() !== null ? cache.getEventCache() : fb.core.snap.EMPTY_NODE;
-    var childName = path.getFront();
-    if (eventCache.hasChild(childName)) {
-      return goog.base(this, "applyUserOverwrite", cache, path, snap, writesCache, serverCache);
-    } else {
-      var serverNode = serverCache !== null ? serverCache : cache.getServerCache();
-      var serverChild = serverNode !== null && serverNode.hasChild(childName) ? serverNode.getImmediateChild(childName) : null;
-      var child = writesCache.child(childName).calcCompleteEventCache(serverChild);
-      if (child !== null) {
-        var newChild = child.updateChild(path.popFront(), snap);
-        return this.updateSingleChild(cache, childName, newChild, cache.serverSnap, cache.serverChildren, writesCache, serverCache);
-      } else {
-        return cache;
-      }
-    }
-  } else {
-    return goog.base(this, "applyUserOverwrite", cache, path, snap, writesCache, serverCache);
-  }
-};
-fb.core.view.RangedViewProcessor.prototype.genStartPost_ = function() {
-  if (this.params.hasStart() && goog.isDef(this.params.getIndexStartValue())) {
-    var startName = this.params.getIndexStartName();
-    return this.index.makePost(this.params.getIndexStartValue(), startName);
-  } else {
-    return this.index.minPost();
-  }
-};
-fb.core.view.RangedViewProcessor.prototype.genEndPost_ = function() {
-  if (this.params.hasEnd() && goog.isDef(this.params.getIndexEndValue())) {
-    var endName = this.params.getIndexEndName();
-    return this.index.makePost(this.params.getIndexEndValue(), endName);
-  } else {
-    return this.index.maxPost();
-  }
-};
-goog.provide("fb.core.view.LimitedViewProcessor");
-goog.require("fb.core.view.RangedViewProcessor");
-fb.core.view.LimitedViewProcessor = function(params) {
-  fb.core.view.RangedViewProcessor.call(this, params);
-  this.reverse_ = !params.isViewFromLeft();
-  this.itemLimit_ = params.getLimit();
-};
-goog.inherits(fb.core.view.LimitedViewProcessor, fb.core.view.RangedViewProcessor);
-fb.core.view.LimitedViewProcessor.prototype.applyQuery = function(snap, opt_constrain) {
-  if (opt_constrain === false) {
-    return goog.base(this, "applyQuery", snap, false);
-  } else {
-    if (snap.isLeafNode()) {
-      return this.indexSnap(fb.core.snap.EMPTY_NODE);
-    } else {
-      var indexed = this.indexSnap(snap);
-      var constrained;
-      var iter;
-      var next;
-      var count;
-      var inRange;
-      if (this.itemLimit_ * 2 < snap.numChildren()) {
-        constrained = this.indexSnap(fb.core.snap.EMPTY_NODE.updatePriority(snap.getPriority()));
-        if (this.reverse_) {
-          iter = indexed.getReverseIteratorFrom(this.endPost_, this.index);
-        } else {
-          iter = indexed.getIteratorFrom(this.startPost_, this.index);
-        }
-        next = iter.getNext();
-        count = 0;
-        while (next && count < this.itemLimit_) {
-          if (this.reverse_) {
-            inRange = this.index.getCompare()(this.startPost_, next) <= 0;
-          } else {
-            inRange = this.index.getCompare()(next, this.endPost_) <= 0;
-          }
-          if (inRange) {
-            constrained = constrained.updateImmediateChild(next.name, next.node);
-            count++;
-            next = iter.getNext();
-          } else {
-            break;
-          }
-        }
-      } else {
-        constrained = this.indexSnap(snap);
-        var startPost, endPost;
-        var cmp = this.index.getCompare();
-        if (this.reverse_) {
-          iter = indexed.getReverseIterator(this.index);
-          startPost = this.endPost_;
-          endPost = this.startPost_;
-          var oldCmp = cmp;
-          cmp = function(a, b) {
-            return-1 * oldCmp(a, b);
-          };
-        } else {
-          iter = indexed.getIterator(this.index);
-          startPost = this.startPost_;
-          endPost = this.endPost_;
-        }
-        count = 0;
-        var foundStartPost = false;
-        next = iter.getNext();
-        while (next) {
-          if (!foundStartPost && cmp(startPost, next) <= 0) {
-            foundStartPost = true;
-          }
-          inRange = foundStartPost && count < this.itemLimit_ && cmp(next, endPost) <= 0;
-          if (inRange) {
-            count++;
-          } else {
-            constrained = constrained.updateImmediateChild(next.name, fb.core.snap.EMPTY_NODE);
-          }
-          next = iter.getNext();
-        }
-      }
-      return constrained;
-    }
-  }
-};
-fb.core.view.LimitedViewProcessor.prototype.updateSingleChild = function(cache, childName, snap, serverSnap, serverChildren, writesCache, serverCache) {
-  var oldEventCache = cache.getEventCache();
-  if (!oldEventCache || oldEventCache.numChildren() < this.itemLimit_) {
-    return goog.base(this, "updateSingleChild", cache, childName, snap, serverSnap, serverChildren, writesCache, serverCache);
-  } else {
-    var completeServerData = serverCache || serverSnap;
-    var newEventCache = this.fullLimitUpdatedChild_(cache, childName, snap, writesCache, completeServerData);
-    if (newEventCache) {
-      if (cache.eventSnap) {
-        return new fb.core.view.Cache(serverSnap, serverChildren, newEventCache, null);
-      } else {
-        return new fb.core.view.Cache(serverSnap, serverChildren, null, newEventCache);
-      }
-    } else {
-      return new fb.core.view.Cache(serverSnap, serverChildren, cache.eventSnap, cache.eventChildren);
-    }
-  }
-};
-fb.core.view.LimitedViewProcessor.prototype.fullLimitUpdatedChild_ = function(cache, childName, childSnap, writesCache, serverCache) {
-  var indexCmp = this.index.getCompare();
-  var cmp;
-  if (this.reverse_) {
-    cmp = function(a, b) {
-      return-1 * indexCmp(a, b);
-    };
-  } else {
-    cmp = indexCmp;
-  }
-  var oldEventCache = (cache.getEventCache());
-  fb.core.util.assert(oldEventCache.numChildren() === this.itemLimit_, "Limit should be full.");
-  var newChildNamedNode = new fb.core.snap.NamedNode(childName, childSnap);
-  var windowBoundary = this.reverse_ ? oldEventCache.getFirstChild(this.index) : oldEventCache.getLastChild(this.index);
-  fb.core.util.assert(windowBoundary != null, "Shouldn't be null, since oldEventCache shouldn't be empty.");
-  windowBoundary = (windowBoundary);
-  var inRange = this.index.getCompare()(this.startPost_, newChildNamedNode) <= 0 && this.index.getCompare()(newChildNamedNode, this.endPost_) <= 0;
-  if (oldEventCache.hasChild(childName)) {
-    var nextBeforeWindow = writesCache.calcIndexedSlice(serverCache, windowBoundary, 1, this.reverse_, this.index);
-    var nextChild = null;
-    if (nextBeforeWindow.length > 0) {
-      nextChild = nextBeforeWindow[0];
-      if (nextChild.name === childName) {
-        nextChild = nextBeforeWindow.length >= 2 ? nextBeforeWindow[1] : null;
-      }
-    }
-    var compareNext = nextChild == null ? 1 : cmp(nextChild, newChildNamedNode);
-    var remainsInWindow = inRange && !childSnap.isEmpty() && compareNext >= 0;
-    if (remainsInWindow) {
-      return oldEventCache.updateImmediateChild(childName, childSnap);
-    } else {
-      var newEventCache = oldEventCache.updateImmediateChild(childName, fb.core.snap.EMPTY_NODE);
-      var nextChildInRange = nextChild != null && this.index.getCompare()(this.startPost_, nextChild) <= 0 && this.index.getCompare()(nextChild, this.endPost_) <= 0;
-      if (nextChildInRange) {
-        return newEventCache.updateImmediateChild(nextChild.name, nextChild.node);
-      } else {
-        return newEventCache;
-      }
-    }
-  } else {
-    if (childSnap.isEmpty()) {
-      return null;
-    } else {
-      if (inRange) {
-        if (cmp(windowBoundary, newChildNamedNode) >= 0) {
-          return oldEventCache.updateImmediateChild(childName, childSnap).updateImmediateChild(windowBoundary.name, fb.core.snap.EMPTY_NODE);
-        } else {
-          return null;
-        }
-      } else {
-        return null;
-      }
-    }
-  }
-};
-goog.provide("fb.core.view.CompleteViewProcessor");
-goog.require("fb.core.view.ViewProcessor");
-fb.core.view.CompleteViewProcessor = function(index) {
-  this.index_ = index;
-};
-goog.inherits(fb.core.view.CompleteViewProcessor, fb.core.view.ViewProcessor);
-fb.core.view.CompleteViewProcessor.prototype.indexSnap = function(snap) {
-  return snap.withIndex(this.index_);
-};
-fb.core.view.CompleteViewProcessor.prototype.isIndexed = function(snap) {
-  return snap.isIndexed(this.index_);
+fb.core.view.ViewProcessor.prototype.listenComplete_ = function(viewCache, path, writesCache, serverCache, accumulator) {
+  var oldServerNode = viewCache.getServerCache();
+  var newViewCache = viewCache.updateServerSnap(oldServerNode.getNode(), oldServerNode.isFullyInitialized() || path.isEmpty(), oldServerNode.isFiltered());
+  return this.generateEventCacheAfterServerEvent_(newViewCache, path, writesCache, fb.core.view.NO_COMPLETE_CHILD_SOURCE, accumulator);
 };
 goog.provide("fb.core.view.EventGenerator");
+goog.require("fb.core.snap.NamedNode");
 fb.core.view.EventGenerator = function(query) {
   this.query_ = query;
   this.index_ = query.getQueryParams().getIndex();
 };
 fb.core.view.EventGenerator.prototype.generateEventsForChanges = function(changes, eventCache, eventRegistrations) {
-  var events = [];
-  var index = this.index_;
-  var moves = goog.array.map(goog.array.filter(changes, function(change) {
-    return change.type === "child_changed" && index.indexedValueChanged((change.oldSnap), change.snapshotNode);
-  }), function(childChange) {
-    return new fb.core.view.Change("child_moved", childChange.snapshotNode, childChange.childName);
-  });
-  var firstAfterMoveIndex = goog.array.findIndex(changes, function(change) {
-    return change.type !== "child_removed" && change.type !== "child_added";
-  });
-  goog.array.insertArrayAt(changes, moves, firstAfterMoveIndex);
-  var remainingChanges = changes;
-  while (remainingChanges.length > 0) {
-    var firstChange = remainingChanges[0];
-    var changeType = firstChange.type;
-    var indexOfNextChangeType = fb.core.view.EventGenerator.indexOfNextChange_(remainingChanges, changeType);
-    var theseChanges = remainingChanges.slice(0, indexOfNextChangeType);
-    remainingChanges = remainingChanges.slice(indexOfNextChangeType);
-    if (changeType === "value" || changeType === "children_added" || changeType === "children_removed") {
-      fb.core.util.assert(theseChanges.length === 1, "We should not have more than one of these at a view");
-    } else {
-      goog.array.sort(theseChanges, goog.bind(this.compareChanges_, this));
+  var events = [], self = this;
+  var moves = [];
+  goog.array.forEach(changes, function(change) {
+    if (change.type === fb.core.view.Change.CHILD_CHANGED && self.index_.indexedValueChanged((change.oldSnap), change.snapshotNode)) {
+      moves.push(fb.core.view.Change.childMovedChange((change.childName), change.snapshotNode));
     }
-    events = events.concat(this.generateEventsForChangeType_(eventRegistrations, theseChanges, eventCache));
-  }
+  });
+  this.generateEventsForType_(events, fb.core.view.Change.CHILD_REMOVED, changes, eventRegistrations, eventCache);
+  this.generateEventsForType_(events, fb.core.view.Change.CHILD_ADDED, changes, eventRegistrations, eventCache);
+  this.generateEventsForType_(events, fb.core.view.Change.CHILD_MOVED, moves, eventRegistrations, eventCache);
+  this.generateEventsForType_(events, fb.core.view.Change.CHILD_CHANGED, changes, eventRegistrations, eventCache);
+  this.generateEventsForType_(events, fb.core.view.Change.VALUE, changes, eventRegistrations, eventCache);
   return events;
 };
-fb.core.view.EventGenerator.indexOfNextChange_ = function(arr, changeType) {
-  var idx = goog.array.findIndex(arr, function(change) {
-    return change.type !== changeType;
+fb.core.view.EventGenerator.prototype.generateEventsForType_ = function(events, eventType, changes, registrations, eventCache) {
+  var filteredChanges = goog.array.filter(changes, function(change) {
+    return change.type === eventType;
   });
-  if (idx === -1) {
-    return arr.length;
-  } else {
-    return idx;
-  }
-};
-fb.core.view.EventGenerator.prototype.generateEventsForChangeType_ = function(registrations, changes, eventCache) {
-  var events = [];
-  for (var i = 0;i < changes.length;++i) {
-    var change = changes[i];
-    var materializedChange = null;
-    var materializedChangeArray = null;
-    for (var j = 0;j < registrations.length;++j) {
-      var registration = registrations[j];
+  var self = this;
+  goog.array.sort(filteredChanges, goog.bind(this.compareChanges_, this));
+  goog.array.forEach(filteredChanges, function(change) {
+    var materializedChange = self.materializeSingleChange_(change, eventCache);
+    goog.array.forEach(registrations, function(registration) {
       if (registration.respondsTo(change.type)) {
-        if (!materializedChange && !materializedChangeArray) {
-          if (change.type === "children_added") {
-            materializedChangeArray = this.materializeChildrenAdded_(change.snapshotNode);
-          } else {
-            if (change.type === "children_removed") {
-              materializedChangeArray = this.materializeChildrenRemoved_(change.snapshotNode);
-            } else {
-              materializedChange = this.materializeSingleChange_(change, eventCache);
-            }
-          }
-        }
-        if (materializedChange) {
-          events.push(registration.createEvent(materializedChange, this.query_));
-        } else {
-          for (var k = 0;k < materializedChangeArray.length;++k) {
-            events.push(registration.createEvent(materializedChangeArray[k], this.query_));
-          }
-        }
+        events.push(registration.createEvent(materializedChange, self.query_));
       }
-    }
-  }
-  return events;
-};
-fb.core.view.EventGenerator.prototype.materializeChildrenAdded_ = function(snap) {
-  var changes = [];
-  if (!snap.isLeafNode() && !snap.isEmpty()) {
-    var iter = snap.getIterator(this.index_);
-    var prevName = null;
-    var next = iter.getNext();
-    while (next) {
-      var newChange = new fb.core.view.Change("child_added", next.node, next.name);
-      newChange.prevName = prevName;
-      changes.push(newChange);
-      prevName = next.name;
-      next = iter.getNext();
-    }
-  }
-  return changes;
-};
-fb.core.view.EventGenerator.prototype.materializeChildrenRemoved_ = function(snap) {
-  var changes = [];
-  if (!snap.isLeafNode() && !snap.isEmpty()) {
-    var iter = snap.getIterator(this.index_);
-    var next = iter.getNext();
-    while (next) {
-      changes.push(new fb.core.view.Change("child_removed", next.node, next.name));
-      next = iter.getNext();
-    }
-  }
-  return changes;
+    });
+  });
 };
 fb.core.view.EventGenerator.prototype.materializeSingleChange_ = function(change, eventCache) {
   if (change.type === "value" || change.type === "child_removed") {
@@ -9645,27 +9733,22 @@ fb.core.view.EventGenerator.prototype.compareChanges_ = function(a, b) {
   return this.index_.compare(aWrapped, bWrapped);
 };
 goog.provide("fb.core.view.View");
-goog.require("fb.core.view.CacheDiffer");
 goog.require("fb.core.view.EventGenerator");
-goog.require("fb.core.view.LimitedViewProcessor");
-goog.require("fb.core.view.CompleteViewProcessor");
-goog.require("fb.core.view.RangedViewProcessor");
-fb.core.view.View = function(query, initialCache) {
+goog.require("fb.core.view.ViewCache");
+goog.require("fb.core.view.ViewProcessor");
+fb.core.view.View = function(query, initialViewCache) {
   this.query_ = query;
   var params = query.getQueryParams();
-  if (params.loadsAllData()) {
-    this.processor_ = new fb.core.view.CompleteViewProcessor(params.getIndex());
-    this.differ_ = fb.core.view.CacheDiffer.Default;
-  } else {
-    if (params.hasLimit()) {
-      this.processor_ = new fb.core.view.LimitedViewProcessor(params);
-      this.differ_ = new fb.core.view.LimitedCacheDiffer(params.getLimit(), params.getIndex(), this.processor_.reverse_);
-    } else {
-      this.processor_ = new fb.core.view.RangedViewProcessor(params);
-      this.differ_ = fb.core.view.CacheDiffer.Default;
-    }
-  }
-  this.cache_ = this.processor_.applyQueryToCache(initialCache, false);
+  var indexFilter = new fb.core.view.filter.IndexedFilter(params.getIndex());
+  var filter = params.getNodeFilter();
+  this.processor_ = new fb.core.view.ViewProcessor(filter);
+  var initialServerCache = initialViewCache.getServerCache();
+  var initialEventCache = initialViewCache.getEventCache();
+  var serverSnap = indexFilter.updateFullNode(fb.core.snap.EMPTY_NODE, initialServerCache.getNode(), null);
+  var eventSnap = filter.updateFullNode(fb.core.snap.EMPTY_NODE, initialEventCache.getNode(), null);
+  var newServerCache = new fb.core.view.CacheNode(serverSnap, initialServerCache.isFullyInitialized(), indexFilter.filtersNodes());
+  var newEventCache = new fb.core.view.CacheNode(eventSnap, initialEventCache.isFullyInitialized(), filter.filtersNodes());
+  this.viewCache_ = new fb.core.view.ViewCache(newEventCache, newServerCache);
   this.eventRegistrations_ = [];
   this.eventGenerator_ = new fb.core.view.EventGenerator(query);
 };
@@ -9673,10 +9756,10 @@ fb.core.view.View.prototype.getQuery = function() {
   return this.query_;
 };
 fb.core.view.View.prototype.getServerCache = function() {
-  return this.cache_.getServerCache();
+  return this.viewCache_.getServerCache().getNode();
 };
 fb.core.view.View.prototype.getCompleteServerCache = function(path) {
-  var cache = this.cache_.getCompleteServerCache();
+  var cache = this.viewCache_.getCompleteServerSnap();
   if (cache) {
     if (this.query_.getQueryParams().loadsAllData() || !path.isEmpty() && !cache.getImmediateChild(path.getFront()).isEmpty()) {
       return cache.getChild(path);
@@ -9722,65 +9805,36 @@ fb.core.view.View.prototype.removeEventRegistration = function(eventRegistration
   }
   return cancelEvents;
 };
-fb.core.view.View.prototype.applyOperation = function(operation, writesCache, serverCache) {
+fb.core.view.View.prototype.applyOperation = function(operation, writesCache, optCompleteServerCache) {
   if (operation.type === fb.core.OperationType.MERGE && operation.source.queryId !== null) {
-    fb.core.util.assert(this.cache_.getCompleteServerCache(), "We should always have a full cache before handling merges");
-    fb.core.util.assert(this.cache_.isComplete(), "Missing event cache, even though we have a server cache");
+    fb.core.util.assert(this.viewCache_.getCompleteServerSnap(), "We should always have a full cache before handling merges");
+    fb.core.util.assert(this.viewCache_.getCompleteEventSnap(), "Missing event cache, even though we have a server cache");
   }
-  var oldCache = this.cache_;
-  var newCache = this.processor_.applyOperation(oldCache, operation, writesCache, serverCache);
-  this.processor_.assertIndexed(newCache);
-  this.cache_ = newCache;
-  var newEventCache;
-  if (newCache.getEventCache() !== oldCache.getEventCache()) {
-    var changes = this.differ_.diff(oldCache, newCache, operation.path);
-    newEventCache = (newCache.getEventCache());
-    return this.generateEventsForChanges_(changes, newEventCache);
-  } else {
-    if (newCache.isComplete() && !oldCache.isComplete()) {
-      fb.core.util.assert(newCache.getEventCache() === oldCache.getEventCache(), "Caches should be the same.");
-      newEventCache = (newCache.getEventCache());
-      return this.generateEventsForChanges_([new fb.core.view.Change("value", newEventCache)], newEventCache);
-    } else {
-      return[];
-    }
-  }
+  var oldViewCache = this.viewCache_;
+  var result = this.processor_.applyOperation(oldViewCache, operation, writesCache, optCompleteServerCache);
+  this.processor_.assertIndexed(result.viewCache);
+  fb.core.util.assert(result.viewCache.getServerCache().isFullyInitialized() || !oldViewCache.getServerCache().isFullyInitialized(), "Once a server snap is complete, it should never go back");
+  this.viewCache_ = result.viewCache;
+  return this.generateEventsForChanges_(result.changes, result.viewCache.getEventCache().getNode(), null);
 };
-fb.core.view.View.prototype.getInitialEvents = function(eventRegistration) {
-  var eventCache = this.cache_.getEventCache();
-  if (eventCache) {
-    var initialChanges = this.differ_.diff(fb.core.view.Cache.Empty, this.cache_, fb.core.util.Path.Empty);
-    return this.generateEventsForChanges_(initialChanges, eventCache, eventRegistration);
-  } else {
-    return[];
+fb.core.view.View.prototype.getInitialEvents = function(registration) {
+  var eventSnap = this.viewCache_.getEventCache();
+  var initialChanges = [];
+  if (!eventSnap.getNode().isLeafNode()) {
+    var eventNode = (eventSnap.getNode());
+    eventNode.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+      initialChanges.push(fb.core.view.Change.childAddedChange(key, childNode));
+    });
   }
+  if (eventSnap.isFullyInitialized()) {
+    initialChanges.push(fb.core.view.Change.valueChange(eventSnap.getNode()));
+  }
+  return this.generateEventsForChanges_(initialChanges, eventSnap.getNode(), registration);
 };
 fb.core.view.View.prototype.generateEventsForChanges_ = function(changes, eventCache, opt_eventRegistration) {
   var registrations = opt_eventRegistration ? [opt_eventRegistration] : this.eventRegistrations_;
   return this.eventGenerator_.generateEventsForChanges(changes, eventCache, registrations);
 };
-goog.provide("fb.core.view.Cache");
-fb.core.view.Cache = function(serverSnap, serverChildren, eventSnap, eventChildren) {
-  this.serverSnap = serverSnap;
-  this.serverChildren = serverChildren;
-  this.eventSnap = eventSnap;
-  this.eventChildren = eventChildren;
-  fb.core.util.assert(serverSnap == null || serverChildren == null, "Only one of serverSnap / serverChildren can be non-null.");
-  fb.core.util.assert(eventSnap == null || eventChildren == null, "Only one of eventSnap / eventChildren can be non-null.");
-};
-fb.core.view.Cache.prototype.getEventCache = function() {
-  return this.eventSnap || this.eventChildren;
-};
-fb.core.view.Cache.prototype.isComplete = function() {
-  return!!this.eventSnap;
-};
-fb.core.view.Cache.prototype.getServerCache = function() {
-  return this.serverSnap || this.serverChildren;
-};
-fb.core.view.Cache.prototype.getCompleteServerCache = function() {
-  return this.serverSnap;
-};
-fb.core.view.Cache.Empty = new fb.core.view.Cache(null, null, null, null);
 goog.provide("fb.core.util.ImmutableTree");
 goog.require("fb.core.util.Path");
 goog.require("fb.util.obj");
@@ -10004,7 +10058,7 @@ fb.core.util.ImmutableTree.prototype.foreachChild = function(f) {
 };
 goog.provide("fb.core.SyncPoint");
 goog.require("fb.core.util.ImmutableTree");
-goog.require("fb.core.view.Cache");
+goog.require("fb.core.view.ViewCache");
 goog.require("fb.core.view.EventRegistration");
 goog.require("fb.core.view.View");
 goog.require("goog.array");
@@ -10014,28 +10068,39 @@ fb.core.SyncPoint = function() {
 fb.core.SyncPoint.prototype.isEmpty = function() {
   return goog.object.isEmpty(this.views_);
 };
-fb.core.SyncPoint.prototype.applyOperation = function(operation, writesCache, serverCache) {
+fb.core.SyncPoint.prototype.applyOperation = function(operation, writesCache, optCompleteServerCache) {
   var queryId = operation.source.queryId;
   if (queryId !== null) {
     var view = fb.util.obj.get(this.views_, queryId);
     fb.core.util.assert(view != null, "SyncTree gave us an op for an invalid query.");
-    return view.applyOperation(operation, writesCache, serverCache);
+    return view.applyOperation(operation, writesCache, optCompleteServerCache);
   } else {
     var events = [];
     goog.object.forEach(this.views_, function(view) {
-      events = events.concat(view.applyOperation(operation, writesCache, serverCache));
+      events = events.concat(view.applyOperation(operation, writesCache, optCompleteServerCache));
     });
     return events;
   }
 };
-fb.core.SyncPoint.prototype.addEventRegistration = function(query, eventRegistration, writesCache, serverCache, completeServerChildren) {
+fb.core.SyncPoint.prototype.addEventRegistration = function(query, eventRegistration, writesCache, serverCache, serverCacheComplete) {
   var queryId = query.queryIdentifier();
   var view = fb.util.obj.get(this.views_, queryId);
   if (!view) {
-    var eventCache = writesCache.calcCompleteEventCache(serverCache);
-    var eventChildren = eventCache ? null : writesCache.calcCompleteEventChildren(completeServerChildren);
-    var cache = new fb.core.view.Cache(serverCache, completeServerChildren, eventCache, eventChildren);
-    view = new fb.core.view.View(query, cache);
+    var eventCache = writesCache.calcCompleteEventCache(serverCacheComplete ? serverCache : null);
+    var eventCacheComplete = false;
+    if (eventCache) {
+      eventCacheComplete = true;
+    } else {
+      if (serverCache instanceof fb.core.snap.ChildrenNode) {
+        eventCache = writesCache.calcCompleteEventChildren(serverCache);
+        eventCacheComplete = false;
+      } else {
+        eventCache = fb.core.snap.EMPTY_NODE;
+        eventCacheComplete = false;
+      }
+    }
+    var viewCache = new fb.core.view.ViewCache(new fb.core.view.CacheNode((eventCache), eventCacheComplete, false), new fb.core.view.CacheNode((serverCache), serverCacheComplete, false));
+    view = new fb.core.view.View(query, viewCache);
     this.views_[queryId] = view;
   }
   view.addEventRegistration(eventRegistration);
@@ -10107,11 +10172,118 @@ fb.core.SyncPoint.prototype.getCompleteView = function() {
   });
   return completeView || null;
 };
-goog.provide("fb.core.WriteTree");
+goog.provide("fb.core.CompoundWrite");
+goog.require("fb.core.snap.Node");
 goog.require("fb.core.util.ImmutableTree");
+fb.core.CompoundWrite = function(writeTree) {
+  this.writeTree_ = writeTree;
+};
+fb.core.CompoundWrite.Empty = new fb.core.CompoundWrite((new fb.core.util.ImmutableTree(null)));
+fb.core.CompoundWrite.prototype.addWrite = function(path, node) {
+  if (path.isEmpty()) {
+    return new fb.core.CompoundWrite(new fb.core.util.ImmutableTree(node));
+  } else {
+    var rootmost = this.writeTree_.findRootMostValueAndPath(path);
+    if (rootmost != null) {
+      var rootMostPath = rootmost.path, value = rootmost.value;
+      var relativePath = fb.core.util.Path.RelativePath(rootMostPath, path);
+      value = value.updateChild(relativePath, node);
+      return new fb.core.CompoundWrite(this.writeTree_.set(rootMostPath, value));
+    } else {
+      var subtree = new fb.core.util.ImmutableTree(node);
+      var newWriteTree = this.writeTree_.setTree(path, subtree);
+      return new fb.core.CompoundWrite(newWriteTree);
+    }
+  }
+};
+fb.core.CompoundWrite.prototype.addWrites = function(path, updates) {
+  var newWrite = this;
+  fb.util.obj.foreach(updates, function(childKey, node) {
+    newWrite = newWrite.addWrite(path.child(childKey), node);
+  });
+  return newWrite;
+};
+fb.core.CompoundWrite.prototype.removeWrite = function(path) {
+  if (path.isEmpty()) {
+    return fb.core.CompoundWrite.Empty;
+  } else {
+    var newWriteTree = this.writeTree_.setTree(path, fb.core.util.ImmutableTree.Empty);
+    return new fb.core.CompoundWrite(newWriteTree);
+  }
+};
+fb.core.CompoundWrite.prototype.hasCompleteWrite = function(path) {
+  return this.getCompleteNode(path) != null;
+};
+fb.core.CompoundWrite.prototype.getCompleteNode = function(path) {
+  var rootmost = this.writeTree_.findRootMostValueAndPath(path);
+  if (rootmost != null) {
+    return this.writeTree_.get(rootmost.path).getChild(fb.core.util.Path.RelativePath(rootmost.path, path));
+  } else {
+    return null;
+  }
+};
+fb.core.CompoundWrite.prototype.getCompleteChildren = function() {
+  var children = [];
+  var node = this.writeTree_.value;
+  if (node != null) {
+    if (!node.isLeafNode()) {
+      node = (node);
+      node.forEachChild(fb.core.snap.PriorityIndex, function(childName, childNode) {
+        children.push(new fb.core.snap.NamedNode(childName, childNode));
+      });
+    }
+  } else {
+    this.writeTree_.children.inorderTraversal(function(childName, childTree) {
+      if (childTree.value != null) {
+        children.push(new fb.core.snap.NamedNode(childName, childTree.value));
+      }
+    });
+  }
+  return children;
+};
+fb.core.CompoundWrite.prototype.childCompoundWrite = function(path) {
+  if (path.isEmpty()) {
+    return this;
+  } else {
+    var shadowingNode = this.getCompleteNode(path);
+    if (shadowingNode != null) {
+      return new fb.core.CompoundWrite(new fb.core.util.ImmutableTree(shadowingNode));
+    } else {
+      return new fb.core.CompoundWrite(this.writeTree_.subtree(path));
+    }
+  }
+};
+fb.core.CompoundWrite.prototype.isEmpty = function() {
+  return this.writeTree_.isEmpty();
+};
+fb.core.CompoundWrite.prototype.apply = function(node) {
+  return fb.core.CompoundWrite.applySubtreeWrite_(fb.core.util.Path.Empty, this.writeTree_, node);
+};
+fb.core.CompoundWrite.applySubtreeWrite_ = function(relativePath, writeTree, node) {
+  if (writeTree.value != null) {
+    return node.updateChild(relativePath, writeTree.value);
+  } else {
+    var priorityWrite = null;
+    writeTree.children.inorderTraversal(function(childKey, childTree) {
+      if (childKey === ".priority") {
+        fb.core.util.assert(childTree.value !== null, "Priority writes must always be leaf nodes");
+        priorityWrite = childTree.value;
+      } else {
+        node = fb.core.CompoundWrite.applySubtreeWrite_(relativePath.child(childKey), childTree, node);
+      }
+    });
+    if (!node.getChild(relativePath).isEmpty() && priorityWrite !== null) {
+      node = node.updateChild(relativePath.child(".priority"), (priorityWrite));
+    }
+    return node;
+  }
+};
+goog.provide("fb.core.WriteTree");
+goog.require("fb.core.CompoundWrite");
+goog.require("fb.core.view.CacheNode");
 fb.core.WriteRecord;
 fb.core.WriteTree = function() {
-  this.visibleWrites_ = (fb.core.util.ImmutableTree.Empty);
+  this.visibleWrites_ = (fb.core.CompoundWrite.Empty);
   this.allWrites_ = [];
   this.lastWriteId_ = -1;
 };
@@ -10125,14 +10297,14 @@ fb.core.WriteTree.prototype.addOverwrite = function(path, snap, writeId, visible
   }
   this.allWrites_.push({path:path, snap:snap, writeId:writeId, visible:visible});
   if (visible) {
-    this.visibleWrites_ = fb.core.WriteTree.layerOverwrite_(this.visibleWrites_, path, snap);
+    this.visibleWrites_ = this.visibleWrites_.addWrite(path, snap);
   }
   this.lastWriteId_ = writeId;
 };
 fb.core.WriteTree.prototype.addMerge = function(path, changedChildren, writeId) {
   fb.core.util.assert(writeId > this.lastWriteId_, "Stacking an older merge on top of newer ones");
   this.allWrites_.push({path:path, children:changedChildren, writeId:writeId, visible:true});
-  this.visibleWrites_ = fb.core.WriteTree.layerMerge_(this.visibleWrites_, path, changedChildren);
+  this.visibleWrites_ = this.visibleWrites_.addWrites(path, changedChildren);
   this.lastWriteId_ = writeId;
 };
 fb.core.WriteTree.prototype.removeWrite = function(writeId) {
@@ -10166,19 +10338,19 @@ fb.core.WriteTree.prototype.removeWrite = function(writeId) {
       this.resetTree_();
     } else {
       if (writeRecord.snap) {
-        this.visibleWrites_ = this.visibleWrites_.remove(writeRecord.path);
+        this.visibleWrites_ = this.visibleWrites_.removeWrite(writeRecord.path);
       } else {
         var children = writeRecord.children;
         var self = this;
         goog.object.forEach(children, function(childSnap, childName) {
-          self.visibleWrites_ = self.visibleWrites_.remove(writeRecord.path.child(childName));
+          self.visibleWrites_ = self.visibleWrites_.removeWrite(writeRecord.path.child(childName));
         });
       }
     }
   }
   var path = writeRecord.path;
-  var pathAndValue = this.visibleWrites_.findRootMostValueAndPath(path);
-  if (pathAndValue) {
+  var hasShadow = this.visibleWrites_.hasCompleteWrite(path);
+  if (hasShadow) {
     if (foundUnderlyingWrites) {
       return path;
     } else {
@@ -10190,65 +10362,47 @@ fb.core.WriteTree.prototype.removeWrite = function(writeId) {
   }
 };
 fb.core.WriteTree.prototype.getCompleteWriteData = function(path) {
-  var rootMostPathAndSnap = this.visibleWrites_.findRootMostValueAndPath(path);
-  if (rootMostPathAndSnap) {
-    var existingSnap = rootMostPathAndSnap.value;
-    var pathToSnap = rootMostPathAndSnap.path;
-    var relativePath = fb.core.util.Path.RelativePath(pathToSnap, path);
-    return existingSnap.getChild(relativePath);
-  } else {
-    return null;
-  }
+  return this.visibleWrites_.getCompleteNode(path);
 };
 fb.core.WriteTree.prototype.calcCompleteEventCache = function(treePath, completeServerCache, writeIdsToExclude, includeHiddenWrites) {
-  var tree;
-  var layeredCache;
   if (!writeIdsToExclude && !includeHiddenWrites) {
-    var pathAndValue = this.visibleWrites_.findRootMostValueAndPath(treePath);
-    if (pathAndValue) {
-      var relativePath = fb.core.util.Path.RelativePath(pathAndValue.path, treePath);
-      return pathAndValue.value.getChild(relativePath);
+    var shadowingNode = this.visibleWrites_.getCompleteNode(treePath);
+    if (shadowingNode != null) {
+      return shadowingNode;
     } else {
-      tree = this.visibleWrites_.subtree(treePath);
-      if (tree.isEmpty()) {
+      var subMerge = this.visibleWrites_.childCompoundWrite(treePath);
+      if (subMerge.isEmpty()) {
         return completeServerCache;
       } else {
-        if (!completeServerCache && !tree.value) {
+        if (completeServerCache == null && !subMerge.hasCompleteWrite(fb.core.util.Path.Empty)) {
           return null;
         } else {
-          layeredCache = completeServerCache || fb.core.snap.EMPTY_NODE;
-          tree.foreach(function(relativePath, snap) {
-            layeredCache = layeredCache.updateChild(relativePath, snap);
-          });
-          return layeredCache;
+          var layeredCache = completeServerCache || fb.core.snap.EMPTY_NODE;
+          return subMerge.apply(layeredCache);
         }
       }
     }
   } else {
-    tree = this.visibleWrites_.subtree(treePath);
-    if (!includeHiddenWrites && tree.isEmpty()) {
+    var merge = this.visibleWrites_.childCompoundWrite(treePath);
+    if (!includeHiddenWrites && merge.isEmpty()) {
       return completeServerCache;
     } else {
-      if (!includeHiddenWrites && completeServerCache === null && tree.value === null) {
+      if (!includeHiddenWrites && completeServerCache == null && !merge.hasCompleteWrite(fb.core.util.Path.Empty)) {
         return null;
       } else {
         var filter = function(write) {
           return(write.visible || includeHiddenWrites) && (!writeIdsToExclude || !goog.array.contains(writeIdsToExclude, write.writeId)) && (write.path.contains(treePath) || treePath.contains(write.path));
         };
-        var eventTree = fb.core.WriteTree.layerTree_(this.allWrites_, filter, treePath);
+        var mergeAtPath = fb.core.WriteTree.layerTree_(this.allWrites_, filter, treePath);
         layeredCache = completeServerCache || fb.core.snap.EMPTY_NODE;
-        eventTree.foreach(function(relativePath, snap) {
-          layeredCache = layeredCache.updateChild(relativePath, snap);
-        });
-        return layeredCache;
+        return mergeAtPath.apply(layeredCache);
       }
     }
   }
 };
 fb.core.WriteTree.prototype.calcCompleteEventChildren = function(treePath, completeServerChildren) {
-  var sawAChild = false;
   var completeChildren = fb.core.snap.EMPTY_NODE;
-  var topLevelSet = this.getCompleteWriteData(treePath);
+  var topLevelSet = this.visibleWrites_.getCompleteNode(treePath);
   if (topLevelSet) {
     if (!topLevelSet.isLeafNode()) {
       topLevelSet.forEachChild(fb.core.snap.PriorityIndex, function(childName, childSnap) {
@@ -10258,93 +10412,71 @@ fb.core.WriteTree.prototype.calcCompleteEventChildren = function(treePath, compl
     return completeChildren;
   } else {
     if (completeServerChildren) {
-      completeChildren = completeServerChildren;
-      this.visibleWrites_.subtree(treePath).foreachChild(function(childName, childSnap) {
-        completeChildren = completeChildren.updateImmediateChild(childName, childSnap);
+      var merge = this.visibleWrites_.childCompoundWrite(treePath);
+      completeServerChildren.forEachChild(fb.core.snap.PriorityIndex, function(childName, childNode) {
+        var node = merge.childCompoundWrite(new fb.core.util.Path(childName)).apply(childNode);
+        completeChildren = completeChildren.updateImmediateChild(childName, node);
+      });
+      goog.array.forEach(merge.getCompleteChildren(), function(namedNode) {
+        completeChildren = completeChildren.updateImmediateChild(namedNode.name, namedNode.node);
       });
       return completeChildren;
     } else {
-      this.visibleWrites_.subtree(treePath).foreachChild(function(childName, childSnap) {
-        sawAChild = true;
-        completeChildren = completeChildren.updateImmediateChild(childName, childSnap);
+      merge = this.visibleWrites_.childCompoundWrite(treePath);
+      goog.array.forEach(merge.getCompleteChildren(), function(namedNode) {
+        completeChildren = completeChildren.updateImmediateChild(namedNode.name, namedNode.node);
       });
-      return sawAChild ? completeChildren : null;
+      return completeChildren;
     }
   }
 };
 fb.core.WriteTree.prototype.calcEventCacheAfterServerOverwrite = function(treePath, childPath, existingEventSnap, existingServerSnap) {
   fb.core.util.assert(existingEventSnap || existingServerSnap, "Either existingEventSnap or existingServerSnap must exist");
   var path = treePath.child(childPath);
-  var pathAndValue = this.visibleWrites_.findRootMostValueAndPath(path);
-  if (pathAndValue) {
+  if (this.visibleWrites_.hasCompleteWrite(path)) {
     return null;
   } else {
-    var subtree = this.visibleWrites_.subtree(path);
-    if (subtree.isEmpty()) {
+    var childMerge = this.visibleWrites_.childCompoundWrite(path);
+    if (childMerge.isEmpty()) {
       return existingServerSnap.getChild(childPath);
     } else {
-      var newEventSnap = existingServerSnap.getChild(childPath);
-      subtree.foreach(function(setPath, setSnap) {
-        newEventSnap = newEventSnap.updateChild(setPath, setSnap);
-      });
-      return newEventSnap;
+      return childMerge.apply(existingServerSnap.getChild(childPath));
     }
   }
 };
-fb.core.WriteTree.prototype.calcEventCacheAfterServerMerge = function(treePath, childTreePath, changedChildren, existingEventSnap) {
-  fb.core.util.assert(existingEventSnap, "We should have an event cache already.");
-  var path = treePath.child(childTreePath);
-  var pathAndValue = this.visibleWrites_.findRootMostValueAndPath(path);
-  if (pathAndValue) {
-    return null;
+fb.core.WriteTree.prototype.calcCompleteChild = function(treePath, childKey, existingServerSnap) {
+  var path = treePath.child(childKey);
+  var shadowingNode = this.visibleWrites_.getCompleteNode(path);
+  if (shadowingNode != null) {
+    return shadowingNode;
   } else {
-    var updatedEventChild = existingEventSnap.getChild(childTreePath);
-    var changed = false;
-    var tree = this.visibleWrites_.subtree(path);
-    goog.object.forEach(changedChildren, function(childSnap, childName) {
-      var childPath = new fb.core.util.Path(childName);
-      var shadow = tree.findRootMostValueAndPath(childPath);
-      if (shadow) {
-        var relativePath = fb.core.util.Path.RelativePath(shadow.path, childPath);
-        var overlaid = shadow.value.getChild(relativePath);
-        updatedEventChild = updatedEventChild.updateChild(childPath, overlaid);
-      } else {
-        changed = true;
-        var subtree = tree.subtree(childPath);
-        if (subtree.isEmpty()) {
-          updatedEventChild = updatedEventChild.updateChild(childPath, childSnap);
-        } else {
-          var toSet = childSnap;
-          subtree.foreach(function(setPath, setSnap) {
-            toSet = toSet.updateChild(setPath, setSnap);
-          });
-          updatedEventChild = updatedEventChild.updateChild(childPath, toSet);
-        }
-      }
-    });
-    if (changed) {
-      return updatedEventChild;
+    if (existingServerSnap.isCompleteForChild(childKey)) {
+      var childMerge = this.visibleWrites_.childCompoundWrite(path);
+      return childMerge.apply(existingServerSnap.getNode().getImmediateChild(childKey));
     } else {
       return null;
     }
   }
 };
+fb.core.WriteTree.prototype.shadowingWrite = function(path) {
+  return this.visibleWrites_.getCompleteNode(path);
+};
 fb.core.WriteTree.prototype.calcIndexedSlice = function(treePath, completeServerData, startPost, count, reverse, index) {
   var toIterate;
-  var tree = this.visibleWrites_.subtree(treePath);
-  if (tree.value) {
-    toIterate = tree.value;
+  var merge = this.visibleWrites_.childCompoundWrite(treePath);
+  var shadowingNode = merge.getCompleteNode(fb.core.util.Path.Empty);
+  if (shadowingNode != null) {
+    toIterate = shadowingNode;
   } else {
-    if (completeServerData) {
-      toIterate = completeServerData;
-      tree.foreach(function(path, snap) {
-        toIterate = toIterate.updateChild(path, snap);
-      });
+    if (completeServerData != null) {
+      toIterate = merge.apply(completeServerData);
+    } else {
+      return[];
     }
   }
-  if (toIterate) {
+  toIterate = toIterate.withIndex(index);
+  if (!toIterate.isEmpty() && !toIterate.isLeafNode()) {
     var nodes = [];
-    toIterate = toIterate.withIndex(index);
     var cmp = index.getCompare();
     var iter = reverse ? toIterate.getReverseIteratorFrom(startPost, index) : toIterate.getIteratorFrom(startPost, index);
     var next = iter.getNext();
@@ -10380,66 +10512,54 @@ fb.core.WriteTree.DefaultFilter_ = function(write) {
   return write.visible;
 };
 fb.core.WriteTree.layerTree_ = function(writes, filter, treeRoot) {
-  var tree = (fb.core.util.ImmutableTree.Empty);
+  var compoundWrite = fb.core.CompoundWrite.Empty;
   for (var i = 0;i < writes.length;++i) {
     var write = writes[i];
     if (filter(write)) {
       var writePath = write.path;
       var relativePath;
       if (write.snap) {
-        var snap;
         if (treeRoot.contains(writePath)) {
           relativePath = fb.core.util.Path.RelativePath(treeRoot, writePath);
-          snap = write.snap;
+          compoundWrite = compoundWrite.addWrite(relativePath, write.snap);
         } else {
-          relativePath = fb.core.util.Path.Empty;
-          snap = write.snap.getChild(fb.core.util.Path.RelativePath(writePath, treeRoot));
+          if (writePath.contains(treeRoot)) {
+            relativePath = fb.core.util.Path.RelativePath(writePath, treeRoot);
+            compoundWrite = compoundWrite.addWrite(fb.core.util.Path.Empty, write.snap.getChild(relativePath));
+          } else {
+          }
         }
-        tree = fb.core.WriteTree.layerOverwrite_(tree, relativePath, snap);
       } else {
-        tree = fb.core.WriteTree.layerMerge_(tree, write.path, write.children);
+        if (write.children) {
+          if (treeRoot.contains(writePath)) {
+            relativePath = fb.core.util.Path.RelativePath(treeRoot, writePath);
+            compoundWrite = compoundWrite.addWrites(relativePath, write.children);
+          } else {
+            if (writePath.contains(treeRoot)) {
+              relativePath = fb.core.util.Path.RelativePath(writePath, treeRoot);
+              if (relativePath.isEmpty()) {
+                compoundWrite = compoundWrite.addWrites(fb.core.util.Path.Empty, write.children);
+              } else {
+                var child = write.children[relativePath.getFront()];
+                if (child !== null) {
+                  var deepNode = child.getChild(relativePath.popFront());
+                  compoundWrite = compoundWrite.addWrite(fb.core.util.Path.Empty, deepNode);
+                }
+              }
+            } else {
+            }
+          }
+        } else {
+          throw fb.core.util.assertionError("WriteRecord should have .snap or .children");
+        }
       }
     }
   }
-  return tree;
-};
-fb.core.WriteTree.layerOverwrite_ = function(tree, path, snap) {
-  var rootMostPathAndSnap = tree.findRootMostValueAndPath(path);
-  if (rootMostPathAndSnap) {
-    var existingSnap = rootMostPathAndSnap.value;
-    var pathToSnap = rootMostPathAndSnap.path;
-    var relativePath = fb.core.util.Path.RelativePath(pathToSnap, path);
-    var updatedExistingSnap = existingSnap.updateChild(relativePath, snap);
-    tree = tree.setTree(pathToSnap, new fb.core.util.ImmutableTree(updatedExistingSnap));
-  } else {
-    tree = tree.setTree(path, new fb.core.util.ImmutableTree(snap));
-  }
-  return tree;
-};
-fb.core.WriteTree.layerMerge_ = function(tree, path, changedChildren) {
-  var rootMostPathAndSnap = tree.findRootMostValueAndPath(path);
-  if (rootMostPathAndSnap) {
-    var existingSnap = rootMostPathAndSnap.value;
-    var pathToSnap = rootMostPathAndSnap.path;
-    var relativePath = fb.core.util.Path.RelativePath(pathToSnap, path);
-    var updatedExistingSnap = existingSnap;
-    goog.object.forEach(changedChildren, function(childSnap, childKey) {
-      updatedExistingSnap = updatedExistingSnap.updateChild(relativePath.child(childKey), childSnap);
-    });
-    tree = tree.setTree(pathToSnap, new fb.core.util.ImmutableTree(updatedExistingSnap));
-  } else {
-    goog.object.forEach(changedChildren, function(childSnap, childKey) {
-      tree = tree.setTree(path.child(childKey), new fb.core.util.ImmutableTree(childSnap));
-    });
-  }
-  return tree;
+  return compoundWrite;
 };
 fb.core.WriteTreeRef = function(path, writeTree) {
   this.treePath_ = path;
   this.writeTree_ = writeTree;
-};
-fb.core.WriteTreeRef.prototype.getCompleteWriteData = function() {
-  return this.writeTree_.getCompleteWriteData(this.treePath_);
 };
 fb.core.WriteTreeRef.prototype.calcCompleteEventCache = function(completeServerCache, writeIdsToExclude, includeHiddenWrites) {
   return this.writeTree_.calcCompleteEventCache(this.treePath_, completeServerCache, writeIdsToExclude, includeHiddenWrites);
@@ -10450,14 +10570,14 @@ fb.core.WriteTreeRef.prototype.calcCompleteEventChildren = function(completeServ
 fb.core.WriteTreeRef.prototype.calcEventCacheAfterServerOverwrite = function(path, existingEventSnap, existingServerSnap) {
   return this.writeTree_.calcEventCacheAfterServerOverwrite(this.treePath_, path, existingEventSnap, existingServerSnap);
 };
-fb.core.WriteTreeRef.prototype.calcEventCacheAfterServerMerge = function(path, changedChildren, existingEventSnap) {
-  return this.writeTree_.calcEventCacheAfterServerMerge(this.treePath_, path, changedChildren, existingEventSnap);
+fb.core.WriteTreeRef.prototype.shadowingWrite = function(path) {
+  return this.writeTree_.shadowingWrite(this.treePath_.child(path));
 };
 fb.core.WriteTreeRef.prototype.calcIndexedSlice = function(completeServerData, startPost, count, reverse, index) {
   return this.writeTree_.calcIndexedSlice(this.treePath_, completeServerData, startPost, count, reverse, index);
 };
-fb.core.WriteTreeRef.prototype.childSnap = function(childName) {
-  return this.writeTree_.getCompleteWriteData(this.treePath_.child(childName));
+fb.core.WriteTreeRef.prototype.calcCompleteChild = function(childKey, existingServerCache) {
+  return this.writeTree_.calcCompleteChild(this.treePath_, childKey, existingServerCache);
 };
 fb.core.WriteTreeRef.prototype.child = function(childName) {
   return new fb.core.WriteTreeRef(this.treePath_.child(childName), this.writeTree_);
@@ -10650,21 +10770,19 @@ fb.core.SyncTree.prototype.addEventRegistration = function(query, eventRegistrat
     foundAncestorDefaultView = foundAncestorDefaultView || syncPoint.hasCompleteView();
     serverCache = serverCache || syncPoint.getCompleteServerCache(fb.core.util.Path.Empty);
   }
-  var completeChildren = null;
-  if (!serverCache) {
-    var sawChild = false;
-    completeChildren = fb.core.snap.EMPTY_NODE;
+  var serverCacheComplete;
+  if (serverCache != null) {
+    serverCacheComplete = true;
+  } else {
+    serverCacheComplete = false;
+    serverCache = fb.core.snap.EMPTY_NODE;
     var subtree = this.syncPointTree_.subtree(path);
     subtree.foreachChild(function(childName, childSyncPoint) {
       var completeCache = childSyncPoint.getCompleteServerCache(fb.core.util.Path.Empty);
       if (completeCache) {
-        sawChild = true;
-        completeChildren = completeChildren.updateImmediateChild(childName, completeCache);
+        serverCache = serverCache.updateImmediateChild(childName, completeCache);
       }
     });
-    if (!sawChild) {
-      completeChildren = null;
-    }
   }
   var viewAlreadyExists = syncPoint.viewExistsForQuery(query);
   if (!viewAlreadyExists && !query.getQueryParams().loadsAllData()) {
@@ -10675,7 +10793,7 @@ fb.core.SyncTree.prototype.addEventRegistration = function(query, eventRegistrat
     this.tagToQueryMap_["_" + tag] = queryKey;
   }
   var writesCache = this.pendingWriteTree_.childWrites(path);
-  var events = syncPoint.addEventRegistration(query, eventRegistration, writesCache, serverCache, completeChildren);
+  var events = syncPoint.addEventRegistration(query, eventRegistration, writesCache, serverCache, serverCacheComplete);
   if (!viewAlreadyExists && !foundAncestorDefaultView) {
     var view = (syncPoint.viewForQuery(query));
     events = events.concat(this.setupListener_(query, view));
@@ -11758,7 +11876,7 @@ fb.api.OnDisconnect.prototype.update = function(objectToMerge, opt_onComplete) {
     objectToMerge = newObjectToMerge;
     fb.core.util.warn("Passing an Array to Firebase.onDisconnect().update() is deprecated. Use set() if you want to overwrite the " + "existing data, or an Object with integer keys if you really do want to only update some of the children.");
   }
-  fb.core.util.validation.validateFirebaseObjectDataArg("Firebase.onDisconnect().update", 1, objectToMerge, false);
+  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.onDisconnect().update", 1, objectToMerge, false);
   fb.util.validation.validateCallback("Firebase.onDisconnect().update", 2, opt_onComplete, true);
   this.repo_.onDisconnectUpdate(this.path_, objectToMerge, opt_onComplete);
 };
@@ -11947,7 +12065,7 @@ Firebase.prototype.update = function(objectToMerge, onComplete) {
     objectToMerge = newObjectToMerge;
     fb.core.util.warn("Passing an Array to Firebase.update() is deprecated. Use set() if you want to overwrite the existing data, or " + "an Object with integer keys if you really do want to only update some of the children.");
   }
-  fb.core.util.validation.validateFirebaseObjectDataArg("Firebase.update", 1, objectToMerge, false);
+  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.update", 1, objectToMerge, false);
   fb.util.validation.validateCallback("Firebase.update", 2, onComplete, true);
   if (fb.util.obj.contains(objectToMerge, ".priority")) {
     throw new Error("update() does not currently support updating .priority.");
@@ -12114,6 +12232,15 @@ Firebase.prototype.changePassword = function(params, onComplete) {
   fb.util.validation.validateCallback("Firebase.changePassword", 2, onComplete, false);
   this.repo.auth.changePassword(params, onComplete);
 };
+Firebase.prototype.changeEmail = function(params, onComplete) {
+  fb.util.validation.validateArgCount("Firebase.changeEmail", 2, 2, arguments.length);
+  fb.core.util.validation.validateObject("Firebase.changeEmail", 1, params, false);
+  fb.core.util.validation.validateObjectContainsKey("Firebase.changeEmail", 1, params, "oldEmail", false, "string");
+  fb.core.util.validation.validateObjectContainsKey("Firebase.changeEmail", 1, params, "newEmail", false, "string");
+  fb.core.util.validation.validateObjectContainsKey("Firebase.changeEmail", 1, params, "password", false, "string");
+  fb.util.validation.validateCallback("Firebase.changeEmail", 2, onComplete, false);
+  this.repo.auth.changeEmail(params, onComplete);
+};
 Firebase.prototype.resetPassword = function(params, onComplete) {
   fb.util.validation.validateArgCount("Firebase.resetPassword", 2, 2, arguments.length);
   fb.core.util.validation.validateObject("Firebase.resetPassword", 1, params, false);
@@ -12160,4 +12287,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.0.6';
+; Firebase.SDK_VERSION='2.1.0';
