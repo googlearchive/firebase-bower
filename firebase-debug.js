@@ -1,4 +1,4 @@
-/*! @license Firebase v2.1.0 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
+/*! @license Firebase v2.1.1 - License: https://www.firebase.com/terms/terms-of-service.html */ var CLOSURE_NO_DEPS = true; var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
 goog.global.CLOSURE_UNCOMPILED_DEFINES;
@@ -2959,6 +2959,8 @@ fb.core.util.exceptionGuard = function(fn) {
     fn();
   } catch (e) {
     setTimeout(function() {
+      var stack = e.stack || "";
+      fb.core.util.warn("Exception was thrown by user callback.", stack);
       throw e;
     }, Math.floor(0));
   }
@@ -9584,6 +9586,7 @@ fb.core.view.ViewProcessor.prototype.ackUserWrite_ = function(viewCache, ackPath
     var source = new fb.core.view.WriteTreeCompleteChildSource(writesCache, viewCache, optCompleteCache);
     var oldEventCache = viewCache.getEventCache().getNode();
     var newEventCache = oldEventCache;
+    var eventCacheComplete;
     if (viewCache.getServerCache().isFullyInitialized()) {
       if (ackPath.isEmpty()) {
         var update = (writesCache.calcCompleteEventCache(viewCache.getCompleteServerSnap()));
@@ -9602,6 +9605,7 @@ fb.core.view.ViewProcessor.prototype.ackUserWrite_ = function(viewCache, ackPath
           }
         }
       }
+      eventCacheComplete = true;
     } else {
       if (viewCache.getEventCache().isFullyInitialized()) {
         newEventCache = oldEventCache;
@@ -9616,18 +9620,23 @@ fb.core.view.ViewProcessor.prototype.ackUserWrite_ = function(viewCache, ackPath
             }
           });
         }
+        eventCacheComplete = true;
       } else {
-        fb.core.util.assert(!ackPath.isEmpty(), "If it were an empty path, we would have an event snap");
-        var childKey = ackPath.getFront();
-        if (ackPath.getLength() == 1 || viewCache.getEventCache().isCompleteForChild(childKey)) {
-          var completeChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
-          if (completeChild != null) {
-            newEventCache = this.filter_.updateChild(oldEventCache, childKey, completeChild, source, accumulator);
+        if (ackPath.isEmpty()) {
+          eventCacheComplete = false;
+        } else {
+          var childKey = ackPath.getFront();
+          if (ackPath.getLength() == 1 || viewCache.getEventCache().isCompleteForChild(childKey)) {
+            var completeChild = writesCache.calcCompleteChild(childKey, viewCache.getServerCache());
+            if (completeChild != null) {
+              newEventCache = this.filter_.updateChild(oldEventCache, childKey, completeChild, source, accumulator);
+            }
           }
+          eventCacheComplete = false;
         }
       }
     }
-    return viewCache.updateEventSnap(newEventCache, viewCache.getEventCache().isFullyInitialized() || ackPath.isEmpty(), this.filter_.filtersNodes());
+    return viewCache.updateEventSnap(newEventCache, eventCacheComplete, this.filter_.filtersNodes());
   }
 };
 fb.core.view.ViewProcessor.prototype.revertUserWrite_ = function(viewCache, path, writesCache, optCompleteServerCache, accumulator) {
@@ -10312,53 +10321,42 @@ fb.core.WriteTree.prototype.removeWrite = function(writeId) {
     return s.writeId === writeId;
   });
   fb.core.util.assert(idx >= 0, "removeWrite called with nonexistent writeId.");
-  var writeRecord = this.allWrites_[idx];
+  var writeToRemove = this.allWrites_[idx];
   this.allWrites_.splice(idx, 1);
-  var foundShadow = false;
-  var foundChildWrites = false;
-  var foundUnderlyingWrites = false;
+  var removedWriteWasVisible = writeToRemove.visible;
+  var removedWriteOverlapsWithOtherWrites = false;
   var i = this.allWrites_.length - 1;
-  while (!foundShadow && i >= 0) {
-    var remainingRecord = this.allWrites_[i];
-    if (i >= idx && this.recordContainsPath_(remainingRecord, writeRecord.path)) {
-      foundShadow = true;
-    } else {
-      if (!foundChildWrites && writeRecord.path.contains(remainingRecord.path)) {
-        if (i >= idx) {
-          foundChildWrites = true;
-        } else {
-          foundUnderlyingWrites = true;
+  while (removedWriteWasVisible && i >= 0) {
+    var currentWrite = this.allWrites_[i];
+    if (currentWrite.visible) {
+      if (i >= idx && this.recordContainsPath_(currentWrite, writeToRemove.path)) {
+        removedWriteWasVisible = false;
+      } else {
+        if (writeToRemove.path.contains(currentWrite.path)) {
+          removedWriteOverlapsWithOtherWrites = true;
         }
       }
     }
     i--;
   }
-  if (!foundShadow) {
-    if (foundChildWrites || foundUnderlyingWrites) {
+  if (!removedWriteWasVisible) {
+    return null;
+  } else {
+    if (removedWriteOverlapsWithOtherWrites) {
       this.resetTree_();
+      return writeToRemove.path;
     } else {
-      if (writeRecord.snap) {
-        this.visibleWrites_ = this.visibleWrites_.removeWrite(writeRecord.path);
+      if (writeToRemove.snap) {
+        this.visibleWrites_ = this.visibleWrites_.removeWrite(writeToRemove.path);
       } else {
-        var children = writeRecord.children;
+        var children = writeToRemove.children;
         var self = this;
         goog.object.forEach(children, function(childSnap, childName) {
-          self.visibleWrites_ = self.visibleWrites_.removeWrite(writeRecord.path.child(childName));
+          self.visibleWrites_ = self.visibleWrites_.removeWrite(writeToRemove.path.child(childName));
         });
       }
+      return writeToRemove.path;
     }
-  }
-  var path = writeRecord.path;
-  var hasShadow = this.visibleWrites_.hasCompleteWrite(path);
-  if (hasShadow) {
-    if (foundUnderlyingWrites) {
-      return path;
-    } else {
-      fb.core.util.assert(foundShadow, "Must have found a shadow");
-      return null;
-    }
-  } else {
-    return path;
   }
 };
 fb.core.WriteTree.prototype.getCompleteWriteData = function(path) {
@@ -10540,8 +10538,8 @@ fb.core.WriteTree.layerTree_ = function(writes, filter, treeRoot) {
               if (relativePath.isEmpty()) {
                 compoundWrite = compoundWrite.addWrites(fb.core.util.Path.Empty, write.children);
               } else {
-                var child = write.children[relativePath.getFront()];
-                if (child !== null) {
+                var child = fb.util.obj.get(write.children, relativePath.getFront());
+                if (child) {
                   var deepNode = child.getChild(relativePath.popFront());
                   compoundWrite = compoundWrite.addWrite(fb.core.util.Path.Empty, deepNode);
                 }
@@ -12287,4 +12285,4 @@ Firebase.SDK_VERSION = CLIENT_VERSION;
 Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
-; Firebase.SDK_VERSION='2.1.0';
+; Firebase.SDK_VERSION='2.1.1';
