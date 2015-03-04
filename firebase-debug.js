@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.1
+/*! @license Firebase v2.2.2
     License: https://www.firebase.com/terms/terms-of-service.html */
 var CLOSURE_NO_DEPS = true;
 var COMPILED = false;
@@ -3169,6 +3169,32 @@ fb.util.obj.clone = function(obj) {
   });
   return clone;
 };
+goog.provide("fb.util");
+goog.require("fb.util.obj");
+fb.util.querystring = function(querystringParams) {
+  var params = [];
+  fb.util.obj.foreach(querystringParams, function(key, value) {
+    if (goog.isArray(value)) {
+      goog.array.forEach(value, function(arrayVal) {
+        params.push(encodeURIComponent(key) + "=" + encodeURIComponent(arrayVal));
+      });
+    } else {
+      params.push(encodeURIComponent(key) + "=" + encodeURIComponent(value));
+    }
+  });
+  return params.length ? "&" + params.join("&") : "";
+};
+fb.util.querystringDecode = function(querystring) {
+  var obj = {};
+  var tokens = querystring.replace(/^\?/, "").split("&");
+  goog.array.forEach(tokens, function(token) {
+    if (token) {
+      var key = token.split("=");
+      obj[key[0]] = key[1];
+    }
+  });
+  return obj;
+};
 goog.provide("fb.util.validation");
 fb.util.validation.validateArgCount = function(fnName, minCount, maxCount, argCount) {
   var argError;
@@ -3482,31 +3508,6 @@ fb.core.view.CacheNode.prototype.isCompleteForChild = function(key) {
 fb.core.view.CacheNode.prototype.getNode = function() {
   return this.node_;
 };
-goog.provide("fb.core.view.ViewCache");
-goog.require("fb.core.view.CacheNode");
-fb.core.view.ViewCache = function(eventCache, serverCache) {
-  this.eventCache_ = eventCache;
-  this.serverCache_ = serverCache;
-};
-fb.core.view.ViewCache.Empty = new fb.core.view.ViewCache(new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false), new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false));
-fb.core.view.ViewCache.prototype.updateEventSnap = function(eventSnap, complete, filtered) {
-  return new fb.core.view.ViewCache(new fb.core.view.CacheNode(eventSnap, complete, filtered), this.serverCache_);
-};
-fb.core.view.ViewCache.prototype.updateServerSnap = function(serverSnap, complete, filtered) {
-  return new fb.core.view.ViewCache(this.eventCache_, new fb.core.view.CacheNode(serverSnap, complete, filtered));
-};
-fb.core.view.ViewCache.prototype.getEventCache = function() {
-  return this.eventCache_;
-};
-fb.core.view.ViewCache.prototype.getCompleteEventSnap = function() {
-  return this.eventCache_.isFullyInitialized() ? this.eventCache_.getNode() : null;
-};
-fb.core.view.ViewCache.prototype.getServerCache = function() {
-  return this.serverCache_;
-};
-fb.core.view.ViewCache.prototype.getCompleteServerSnap = function() {
-  return this.serverCache_.isFullyInitialized() ? this.serverCache_.getNode() : null;
-};
 goog.provide("fb.core.stats.StatsListener");
 fb.core.stats.StatsListener = function(collection) {
   this.collection_ = collection;
@@ -3530,7 +3531,7 @@ var REPORT_STATS_INTERVAL = 5 * 60 * 1E3;
 fb.core.stats.StatsReporter = function(collection, connection) {
   this.statsToReport_ = {};
   this.statsListener_ = new fb.core.stats.StatsListener(collection);
-  this.connection_ = connection;
+  this.server_ = connection;
   var timeout = FIRST_STATS_MIN_TIME + (FIRST_STATS_MAX_TIME - FIRST_STATS_MIN_TIME) * Math.random();
   setTimeout(goog.bind(this.reportStats_, this), Math.floor(timeout));
 };
@@ -3548,7 +3549,7 @@ fb.core.stats.StatsReporter.prototype.reportStats_ = function() {
     }
   }
   if (haveStatsToReport) {
-    this.connection_.reportStats(reportedStats);
+    this.server_.reportStats(reportedStats);
   }
   setTimeout(goog.bind(this.reportStats_, this), Math.floor(Math.random() * 2 * REPORT_STATS_INTERVAL));
 };
@@ -3592,6 +3593,8 @@ fb.core.stats.StatsManager.getOrCreateReporter = function(repoInfo, creatorFunct
   }
   return fb.core.stats.StatsManager.reporters_[hashString];
 };
+goog.provide("fb.core.ServerActions");
+fb.core.ServerActions = goog.defineClass(null, {listen:goog.abstractMethod, unlisten:goog.abstractMethod, put:goog.abstractMethod, merge:goog.abstractMethod, auth:goog.abstractMethod, unauth:goog.abstractMethod, onDisconnectPut:goog.abstractMethod, onDisconnectMerge:goog.abstractMethod, onDisconnectCancel:goog.abstractMethod, reportStats:goog.abstractMethod});
 goog.provide("fb.core.snap.Node");
 goog.provide("fb.core.snap.NamedNode");
 fb.core.snap.Node = function() {
@@ -3684,6 +3687,7 @@ if (goog.DEBUG) {
   };
 }
 ;goog.provide("fb.core.util.SortedMap");
+goog.require("goog.array");
 fb.Comparator;
 fb.core.util.SortedMap = goog.defineClass(null, {constructor:function(comparator, opt_root) {
   this.comparator_ = comparator;
@@ -4140,6 +4144,7 @@ fb.core.util.ServerValues.resolveDeferredValueSnapshot = function(node, serverVa
   }
 };
 goog.provide("fb.core.util.Path");
+goog.provide("fb.core.util.ValidationPath");
 fb.core.util.Path = goog.defineClass(null, {constructor:function(pathOrString, opt_pieceNum) {
   if (arguments.length == 1) {
     this.pieces_ = pathOrString.split("/");
@@ -4182,6 +4187,17 @@ fb.core.util.Path = goog.defineClass(null, {constructor:function(pathOrString, o
     }
   }
   return pathString || "/";
+}, toUrlEncodedString:function() {
+  var pathString = "";
+  for (var i = this.pieceNum_;i < this.pieces_.length;i++) {
+    if (this.pieces_[i] !== "") {
+      pathString += "/" + goog.string.urlEncode(this.pieces_[i]);
+    }
+  }
+  return pathString || "/";
+}, slice:function(opt_begin) {
+  var begin = opt_begin || 0;
+  return this.pieces_.slice(this.pieceNum_ + begin);
 }, parent:function() {
   if (this.pieceNum_ >= this.pieces_.length) {
     return null;
@@ -4248,98 +4264,39 @@ fb.core.util.Path = goog.defineClass(null, {constructor:function(pathOrString, o
   return true;
 }});
 fb.core.util.Path.Empty = new fb.core.util.Path("");
-goog.provide("fb.core.util.Tree");
-goog.require("fb.core.util.Path");
-goog.require("fb.util.obj");
-fb.core.util.TreeNode = goog.defineClass(null, {constructor:function() {
-  this.children = {};
-  this.childCount = 0;
-  this.value = null;
-}});
-fb.core.util.Tree = goog.defineClass(null, {constructor:function(opt_name, opt_parent, opt_node) {
-  this.name_ = opt_name ? opt_name : "";
-  this.parent_ = opt_parent ? opt_parent : null;
-  this.node_ = opt_node ? opt_node : new fb.core.util.TreeNode;
-}, subTree:function(pathObj) {
-  var path = pathObj instanceof fb.core.util.Path ? pathObj : new fb.core.util.Path(pathObj);
-  var child = this, next;
-  while ((next = path.getFront()) !== null) {
-    var childNode = fb.util.obj.get(child.node_.children, next) || new fb.core.util.TreeNode;
-    child = new fb.core.util.Tree(next, child, childNode);
-    path = path.popFront();
+fb.core.util.ValidationPath = goog.defineClass(null, {constructor:function(path, errorPrefix) {
+  this.parts_ = path.slice();
+  this.byteLength_ = Math.max(1, this.parts_.length);
+  this.errorPrefix_ = errorPrefix;
+  for (var i = 0;i < this.parts_.length;i++) {
+    this.byteLength_ += fb.util.utf8.stringLength(this.parts_[i]);
   }
-  return child;
-}, getValue:function() {
-  return this.node_.value;
-}, setValue:function(value) {
-  fb.core.util.assert(typeof value !== "undefined", "Cannot set value to undefined");
-  this.node_.value = value;
-  this.updateParents_();
-}, clear:function() {
-  this.node_.value = null;
-  this.node_.children = {};
-  this.node_.childCount = 0;
-  this.updateParents_();
-}, hasChildren:function() {
-  return this.node_.childCount > 0;
-}, isEmpty:function() {
-  return this.getValue() === null && !this.hasChildren();
-}, forEachChild:function(action) {
-  var self = this;
-  goog.object.forEach(this.node_.children, function(childTree, child) {
-    action(new fb.core.util.Tree(child, self, childTree));
-  });
-}, forEachDescendant:function(action, opt_includeSelf, opt_childrenFirst) {
-  if (opt_includeSelf && !opt_childrenFirst) {
-    action(this);
+  this.checkValid_();
+}, statics:{MAX_PATH_DEPTH:32, MAX_PATH_LENGTH_BYTES:768}, push:function(child) {
+  if (this.parts_.length > 0) {
+    this.byteLength_ += 1;
   }
-  this.forEachChild(function(child) {
-    child.forEachDescendant(action, true, opt_childrenFirst);
-  });
-  if (opt_includeSelf && opt_childrenFirst) {
-    action(this);
+  this.parts_.push(child);
+  this.byteLength_ += fb.util.utf8.stringLength(child);
+  this.checkValid_();
+}, pop:function() {
+  var last = this.parts_.pop();
+  this.byteLength_ -= fb.util.utf8.stringLength(last);
+  if (this.parts_.length > 0) {
+    this.byteLength_ -= 1;
   }
-}, forEachAncestor:function(action, opt_includeSelf) {
-  var node = opt_includeSelf ? this : this.parent();
-  while (node !== null) {
-    if (action(node)) {
-      return true;
-    }
-    node = node.parent();
+}, checkValid_:function() {
+  if (this.byteLength_ > fb.core.util.ValidationPath.MAX_PATH_LENGTH_BYTES) {
+    throw new Error(this.errorPrefix_ + "has a key path longer than " + fb.core.util.ValidationPath.MAX_PATH_LENGTH_BYTES + " bytes (" + this.byteLength_ + ").");
   }
-  return false;
-}, forEachImmediateDescendantWithValue:function(action) {
-  this.forEachChild(function(child) {
-    if (child.getValue() !== null) {
-      action(child);
-    } else {
-      child.forEachImmediateDescendantWithValue(action);
-    }
-  });
-}, path:function() {
-  return new fb.core.util.Path(this.parent_ === null ? this.name_ : this.parent_.path() + "/" + this.name_);
-}, name:function() {
-  return this.name_;
-}, parent:function() {
-  return this.parent_;
-}, updateParents_:function() {
-  if (this.parent_ !== null) {
-    this.parent_.updateChild_(this.name_, this);
+  if (this.parts_.length > fb.core.util.ValidationPath.MAX_PATH_DEPTH) {
+    throw new Error(this.errorPrefix_ + "path specified exceeds the maximum depth that can be written (" + fb.core.util.ValidationPath.MAX_PATH_DEPTH + ") or object contains a cycle " + this.toErrorString());
   }
-}, updateChild_:function(childName, child) {
-  var childEmpty = child.isEmpty();
-  var childExists = fb.util.obj.contains(this.node_.children, childName);
-  if (childEmpty && childExists) {
-    delete this.node_.children[childName];
-    this.node_.childCount--;
-    this.updateParents_();
-  } else {
-    if (!childEmpty && !childExists) {
-      this.node_.children[childName] = child.node_;
-      this.node_.childCount++;
-      this.updateParents_();
-    }
+}, toErrorString:function() {
+  if (this.parts_.length == 0) {
+    return "";
   }
+  return "in property '" + this.parts_.join(".") + "'";
 }});
 goog.provide("fb.core.storage.MemoryStorage");
 goog.require("fb.util.obj");
@@ -4463,6 +4420,8 @@ goog.require("fb.core.storage");
 goog.require("fb.util.json");
 goog.require("goog.crypt.Sha1");
 goog.require("goog.crypt.base64");
+goog.require("goog.object");
+goog.require("goog.string");
 fb.core.util.LUIDGenerator = function() {
   var id = 1;
   return function() {
@@ -4475,7 +4434,7 @@ fb.core.util.assert = function(assertion, message) {
   }
 };
 fb.core.util.assertionError = function(message) {
-  return new Error("Firebase INTERNAL ASSERT FAILED:" + message);
+  return new Error("Firebase (" + Firebase.SDK_VERSION + ") INTERNAL ASSERT FAILED: " + message);
 };
 fb.core.util.assertWeak = function(assertion, message) {
   if (!assertion) {
@@ -4859,6 +4818,10 @@ fb.core.util.callUserCallback = function(opt_callback, var_args) {
       opt_callback.apply(null, newArgs);
     });
   }
+};
+fb.core.util.beingCrawled = function() {
+  var userAgent = typeof window === "object" && window["navigator"] && window["navigator"]["userAgent"] || "";
+  return userAgent.search(/googlebot|google webmaster tools|bingbot|yahoo! slurp|baiduspider|yandexbot|duckduckbot/i) >= 0;
 };
 goog.provide("fb.util.utf8");
 goog.require("fb.core.util");
@@ -5862,110 +5825,6 @@ fb.core.view.ViewProcessor.prototype.listenComplete_ = function(viewCache, path,
   var newViewCache = viewCache.updateServerSnap(oldServerNode.getNode(), oldServerNode.isFullyInitialized() || path.isEmpty(), oldServerNode.isFiltered());
   return this.generateEventCacheAfterServerEvent_(newViewCache, path, writesCache, fb.core.view.NO_COMPLETE_CHILD_SOURCE, accumulator);
 };
-goog.provide("fb.core.view.View");
-goog.require("fb.core.view.EventGenerator");
-goog.require("fb.core.view.ViewCache");
-goog.require("fb.core.view.ViewProcessor");
-goog.require("fb.core.util");
-fb.core.view.View = function(query, initialViewCache) {
-  this.query_ = query;
-  var params = query.getQueryParams();
-  var indexFilter = new fb.core.view.filter.IndexedFilter(params.getIndex());
-  var filter = params.getNodeFilter();
-  this.processor_ = new fb.core.view.ViewProcessor(filter);
-  var initialServerCache = initialViewCache.getServerCache();
-  var initialEventCache = initialViewCache.getEventCache();
-  var serverSnap = indexFilter.updateFullNode(fb.core.snap.EMPTY_NODE, initialServerCache.getNode(), null);
-  var eventSnap = filter.updateFullNode(fb.core.snap.EMPTY_NODE, initialEventCache.getNode(), null);
-  var newServerCache = new fb.core.view.CacheNode(serverSnap, initialServerCache.isFullyInitialized(), indexFilter.filtersNodes());
-  var newEventCache = new fb.core.view.CacheNode(eventSnap, initialEventCache.isFullyInitialized(), filter.filtersNodes());
-  this.viewCache_ = new fb.core.view.ViewCache(newEventCache, newServerCache);
-  this.eventRegistrations_ = [];
-  this.eventGenerator_ = new fb.core.view.EventGenerator(query);
-};
-fb.core.view.View.prototype.getQuery = function() {
-  return this.query_;
-};
-fb.core.view.View.prototype.getServerCache = function() {
-  return this.viewCache_.getServerCache().getNode();
-};
-fb.core.view.View.prototype.getCompleteServerCache = function(path) {
-  var cache = this.viewCache_.getCompleteServerSnap();
-  if (cache) {
-    if (this.query_.getQueryParams().loadsAllData() || !path.isEmpty() && !cache.getImmediateChild(path.getFront()).isEmpty()) {
-      return cache.getChild(path);
-    }
-  }
-  return null;
-};
-fb.core.view.View.prototype.isEmpty = function() {
-  return this.eventRegistrations_.length === 0;
-};
-fb.core.view.View.prototype.addEventRegistration = function(eventRegistration) {
-  this.eventRegistrations_.push(eventRegistration);
-};
-fb.core.view.View.prototype.removeEventRegistration = function(eventRegistration, cancelError) {
-  var cancelEvents = [];
-  if (cancelError) {
-    fb.core.util.assert(eventRegistration == null, "A cancel should cancel all event registrations.");
-    var path = this.query_.path;
-    goog.array.forEach(this.eventRegistrations_, function(registration) {
-      cancelError = (cancelError);
-      var maybeEvent = registration.createCancelEvent(cancelError, path);
-      if (maybeEvent) {
-        cancelEvents.push(maybeEvent);
-      }
-    });
-  }
-  if (eventRegistration) {
-    var remaining = [];
-    for (var i = 0;i < this.eventRegistrations_.length;++i) {
-      var existing = this.eventRegistrations_[i];
-      if (!existing.matches(eventRegistration)) {
-        remaining.push(existing);
-      } else {
-        if (eventRegistration.hasAnyCallback()) {
-          remaining = remaining.concat(this.eventRegistrations_.slice(i + 1));
-          break;
-        }
-      }
-    }
-    this.eventRegistrations_ = remaining;
-  } else {
-    this.eventRegistrations_ = [];
-  }
-  return cancelEvents;
-};
-fb.core.view.View.prototype.applyOperation = function(operation, writesCache, optCompleteServerCache) {
-  if (operation.type === fb.core.OperationType.MERGE && operation.source.queryId !== null) {
-    fb.core.util.assert(this.viewCache_.getCompleteServerSnap(), "We should always have a full cache before handling merges");
-    fb.core.util.assert(this.viewCache_.getCompleteEventSnap(), "Missing event cache, even though we have a server cache");
-  }
-  var oldViewCache = this.viewCache_;
-  var result = this.processor_.applyOperation(oldViewCache, operation, writesCache, optCompleteServerCache);
-  this.processor_.assertIndexed(result.viewCache);
-  fb.core.util.assert(result.viewCache.getServerCache().isFullyInitialized() || !oldViewCache.getServerCache().isFullyInitialized(), "Once a server snap is complete, it should never go back");
-  this.viewCache_ = result.viewCache;
-  return this.generateEventsForChanges_(result.changes, result.viewCache.getEventCache().getNode(), null);
-};
-fb.core.view.View.prototype.getInitialEvents = function(registration) {
-  var eventSnap = this.viewCache_.getEventCache();
-  var initialChanges = [];
-  if (!eventSnap.getNode().isLeafNode()) {
-    var eventNode = (eventSnap.getNode());
-    eventNode.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
-      initialChanges.push(fb.core.view.Change.childAddedChange(key, childNode));
-    });
-  }
-  if (eventSnap.isFullyInitialized()) {
-    initialChanges.push(fb.core.view.Change.valueChange(eventSnap.getNode()));
-  }
-  return this.generateEventsForChanges_(initialChanges, eventSnap.getNode(), registration);
-};
-fb.core.view.View.prototype.generateEventsForChanges_ = function(changes, eventCache, opt_eventRegistration) {
-  var registrations = opt_eventRegistration ? [opt_eventRegistration] : this.eventRegistrations_;
-  return this.eventGenerator_.generateEventsForChanges(changes, eventCache, registrations);
-};
 goog.provide("fb.core.snap.Index");
 goog.provide("fb.core.snap.PriorityIndex");
 goog.provide("fb.core.snap.SubKeyIndex");
@@ -6024,7 +5883,40 @@ fb.core.snap.SubKeyIndex.prototype.maxPost = function() {
 fb.core.snap.SubKeyIndex.prototype.toString = function() {
   return this.indexKey_;
 };
-fb.core.snap.PriorityIndex = new fb.core.snap.SubKeyIndex(".priority");
+fb.core.snap.PriorityIndex_ = function() {
+  fb.core.snap.Index.call(this);
+};
+goog.inherits(fb.core.snap.PriorityIndex_, fb.core.snap.Index);
+fb.core.snap.PriorityIndex_.prototype.compare = function(a, b) {
+  var aPriority = a.node.getPriority();
+  var bPriority = b.node.getPriority();
+  var indexCmp = aPriority.compareTo(bPriority);
+  if (indexCmp === 0) {
+    return fb.core.util.nameCompare(a.name, b.name);
+  } else {
+    return indexCmp;
+  }
+};
+fb.core.snap.PriorityIndex_.prototype.isDefinedOn = function(node) {
+  return!node.getPriority().isEmpty();
+};
+fb.core.snap.PriorityIndex_.prototype.indexedValueChanged = function(oldNode, newNode) {
+  return!oldNode.getPriority().equals(newNode.getPriority());
+};
+fb.core.snap.PriorityIndex_.prototype.minPost = function() {
+  return fb.core.snap.NamedNode.MIN;
+};
+fb.core.snap.PriorityIndex_.prototype.maxPost = function() {
+  return new fb.core.snap.NamedNode(fb.core.util.MAX_NAME, new fb.core.snap.LeafNode("[PRIORITY-POST]", fb.core.snap.MAX_NODE));
+};
+fb.core.snap.PriorityIndex_.prototype.makePost = function(indexValue, name) {
+  var priorityNode = fb.core.snap.NodeFromJSON(indexValue);
+  return new fb.core.snap.NamedNode(name, new fb.core.snap.LeafNode("[PRIORITY-POST]", priorityNode));
+};
+fb.core.snap.PriorityIndex_.prototype.toString = function() {
+  return ".priority";
+};
+fb.core.snap.PriorityIndex = new fb.core.snap.PriorityIndex_;
 fb.core.snap.KeyIndex_ = function() {
   fb.core.snap.Index.call(this);
 };
@@ -6106,15 +5998,8 @@ fb.core.view.QueryParams = function() {
   this.indexEndName_ = "";
   this.index_ = fb.core.snap.PriorityIndex;
 };
-fb.core.view.QueryParams.INDEX_START_VALUE = "sp";
-fb.core.view.QueryParams.INDEX_START_NAME = "sn";
-fb.core.view.QueryParams.INDEX_END_VALUE = "ep";
-fb.core.view.QueryParams.INDEX_END_NAME = "en";
-fb.core.view.QueryParams.LIMIT = "l";
-fb.core.view.QueryParams.VIEW_FROM = "vf";
-fb.core.view.QueryParams.VIEW_FROM_LEFT = "l";
-fb.core.view.QueryParams.VIEW_FROM_RIGHT = "r";
-fb.core.view.QueryParams.INDEX = "i";
+fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_ = {INDEX_START_VALUE:"sp", INDEX_START_NAME:"sn", INDEX_END_VALUE:"ep", INDEX_END_NAME:"en", LIMIT:"l", VIEW_FROM:"vf", VIEW_FROM_LEFT:"l", VIEW_FROM_RIGHT:"r", INDEX:"i"};
+fb.core.view.QueryParams.REST_QUERY_CONSTANTS_ = {ORDER_BY:"orderBy", PRIORITY_INDEX:"$priority", VALUE_INDEX:"$value", START_AT:"startAt", END_AT:"endAt", LIMIT_TO_FIRST:"limitToFirst", LIMIT_TO_LAST:"limitToLast"};
 fb.core.view.QueryParams.DEFAULT = new fb.core.view.QueryParams;
 fb.core.view.QueryParams.prototype.hasStart = function() {
   return this.startSet_;
@@ -6123,7 +6008,7 @@ fb.core.view.QueryParams.prototype.isViewFromLeft = function() {
   if (this.viewFrom_ === "") {
     return this.startSet_;
   } else {
-    return this.viewFrom_ === "l";
+    return this.viewFrom_ === fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_.VIEW_FROM_LEFT;
   }
 };
 fb.core.view.QueryParams.prototype.getIndexStartValue = function() {
@@ -6192,14 +6077,14 @@ fb.core.view.QueryParams.prototype.limitToFirst = function(newLimit) {
   var newParams = this.copy_();
   newParams.limitSet_ = true;
   newParams.limit_ = newLimit;
-  newParams.viewFrom_ = fb.core.view.QueryParams.VIEW_FROM_LEFT;
+  newParams.viewFrom_ = fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_.VIEW_FROM_LEFT;
   return newParams;
 };
 fb.core.view.QueryParams.prototype.limitToLast = function(newLimit) {
   var newParams = this.copy_();
   newParams.limitSet_ = true;
   newParams.limit_ = newLimit;
-  newParams.viewFrom_ = fb.core.view.QueryParams.VIEW_FROM_RIGHT;
+  newParams.viewFrom_ = fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_.VIEW_FROM_RIGHT;
   return newParams;
 };
 fb.core.view.QueryParams.prototype.startAt = function(indexValue, key) {
@@ -6240,33 +6125,34 @@ fb.core.view.QueryParams.prototype.orderBy = function(index) {
   return newParams;
 };
 fb.core.view.QueryParams.prototype.getQueryObject = function() {
+  var WIRE_PROTOCOL_CONSTANTS = fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_;
   var obj = {};
   if (this.startSet_) {
-    obj[fb.core.view.QueryParams.INDEX_START_VALUE] = this.indexStartValue_;
+    obj[WIRE_PROTOCOL_CONSTANTS.INDEX_START_VALUE] = this.indexStartValue_;
     if (this.startNameSet_) {
-      obj[fb.core.view.QueryParams.INDEX_START_NAME] = this.indexStartName_;
+      obj[WIRE_PROTOCOL_CONSTANTS.INDEX_START_NAME] = this.indexStartName_;
     }
   }
   if (this.endSet_) {
-    obj[fb.core.view.QueryParams.INDEX_END_VALUE] = this.indexEndValue_;
+    obj[WIRE_PROTOCOL_CONSTANTS.INDEX_END_VALUE] = this.indexEndValue_;
     if (this.endNameSet_) {
-      obj[fb.core.view.QueryParams.INDEX_END_NAME] = this.indexEndName_;
+      obj[WIRE_PROTOCOL_CONSTANTS.INDEX_END_NAME] = this.indexEndName_;
     }
   }
   if (this.limitSet_) {
-    obj[fb.core.view.QueryParams.LIMIT] = this.limit_;
+    obj[WIRE_PROTOCOL_CONSTANTS.LIMIT] = this.limit_;
     var viewFrom = this.viewFrom_;
     if (viewFrom === "") {
-      if (this.startSet_) {
-        viewFrom = "l";
+      if (this.isViewFromLeft()) {
+        viewFrom = WIRE_PROTOCOL_CONSTANTS.VIEW_FROM_LEFT;
       } else {
-        viewFrom = "r";
+        viewFrom = WIRE_PROTOCOL_CONSTANTS.VIEW_FROM_RIGHT;
       }
     }
-    obj[fb.core.view.QueryParams.VIEW_FROM] = viewFrom;
+    obj[WIRE_PROTOCOL_CONSTANTS.VIEW_FROM] = viewFrom;
   }
   if (this.index_ !== fb.core.snap.PriorityIndex) {
-    obj[fb.core.view.QueryParams.INDEX] = this.index_.toString();
+    obj[WIRE_PROTOCOL_CONSTANTS.INDEX] = this.index_.toString();
   }
   return obj;
 };
@@ -6286,6 +6172,45 @@ fb.core.view.QueryParams.prototype.getNodeFilter = function() {
       return new fb.core.view.filter.RangedFilter(this);
     }
   }
+};
+fb.core.view.QueryParams.prototype.toRestQueryStringParameters = function() {
+  var REST_CONSTANTS = fb.core.view.QueryParams.REST_QUERY_CONSTANTS_;
+  var qs = {};
+  if (this.isDefault()) {
+    return qs;
+  }
+  var orderBy;
+  if (this.index_ === fb.core.snap.PriorityIndex) {
+    orderBy = REST_CONSTANTS.PRIORITY_INDEX;
+  } else {
+    if (this.index_ === fb.core.snap.ValueIndex) {
+      orderBy = REST_CONSTANTS.VALUE_INDEX;
+    } else {
+      fb.core.util.assert(this.index_ instanceof fb.core.snap.SubKeyIndex, "Unrecognized index type!");
+      orderBy = this.index_.toString();
+    }
+  }
+  qs[REST_CONSTANTS.ORDER_BY] = fb.util.json.stringify(orderBy);
+  if (this.startSet_) {
+    qs[REST_CONSTANTS.START_AT] = fb.util.json.stringify(this.indexStartValue_);
+    if (this.startNameSet_) {
+      qs[REST_CONSTANTS.START_AT] += "," + fb.util.json.stringify(this.indexStartName_);
+    }
+  }
+  if (this.endSet_) {
+    qs[REST_CONSTANTS.END_AT] = fb.util.json.stringify(this.indexEndValue_);
+    if (this.endNameSet_) {
+      qs[REST_CONSTANTS.END_AT] += "," + fb.util.json.stringify(this.indexEndName_);
+    }
+  }
+  if (this.limitSet_) {
+    if (this.isViewFromLeft()) {
+      qs[REST_CONSTANTS.LIMIT_TO_FIRST] = this.limit_;
+    } else {
+      qs[REST_CONSTANTS.LIMIT_TO_LAST] = this.limit_;
+    }
+  }
+  return qs;
 };
 if (goog.DEBUG) {
   fb.core.view.QueryParams.prototype.toString = function() {
@@ -6561,6 +6486,9 @@ fb.core.snap.ChildrenNode = function(children, priorityNode, indexMap) {
   if (this.priorityNode_) {
     fb.core.snap.validatePriorityNode(this.priorityNode_);
   }
+  if (children.isEmpty()) {
+    fb.core.util.assert(!this.priorityNode_ || this.priorityNode_.isEmpty(), "An empty node cannot have a priority");
+  }
   this.indexMap_ = indexMap;
   this.lazyHash_ = null;
 };
@@ -6571,7 +6499,11 @@ fb.core.snap.ChildrenNode.prototype.getPriority = function() {
   return this.priorityNode_ || fb.core.snap.EMPTY_NODE;
 };
 fb.core.snap.ChildrenNode.prototype.updatePriority = function(newPriorityNode) {
-  return new fb.core.snap.ChildrenNode(this.children_, newPriorityNode, this.indexMap_);
+  if (this.children_.isEmpty()) {
+    return this;
+  } else {
+    return new fb.core.snap.ChildrenNode(this.children_, newPriorityNode, this.indexMap_);
+  }
 };
 fb.core.snap.ChildrenNode.prototype.getImmediateChild = function(childName) {
   if (childName === ".priority") {
@@ -6873,6 +6805,9 @@ fb.core.snap.NodeFromJSON = function(json, opt_priority) {
         }
       }
     });
+    if (children.length == 0) {
+      return fb.core.snap.EMPTY_NODE;
+    }
     var childSet = (fb.core.snap.buildChildSet(children, fb.core.snap.NAME_ONLY_COMPARATOR, function(namedNode) {
       return namedNode.name;
     }, fb.core.snap.NAME_COMPARATOR));
@@ -7011,7 +6946,7 @@ fb.core.snap.MAX_NODE_.prototype.equals = function(other) {
   return other === this;
 };
 fb.core.snap.MAX_NODE_.prototype.getPriority = function() {
-  throw fb.core.util.assertionError("Why is this called?");
+  return this;
 };
 fb.core.snap.MAX_NODE_.prototype.getImmediateChild = function(childName) {
   return fb.core.snap.EMPTY_NODE;
@@ -7022,6 +6957,136 @@ fb.core.snap.MAX_NODE_.prototype.isEmpty = function() {
 fb.core.snap.MAX_NODE = new fb.core.snap.MAX_NODE_;
 fb.core.snap.NamedNode.MIN = new fb.core.snap.NamedNode(fb.core.util.MIN_NAME, fb.core.snap.EMPTY_NODE);
 fb.core.snap.NamedNode.MAX = new fb.core.snap.NamedNode(fb.core.util.MAX_NAME, fb.core.snap.MAX_NODE);
+goog.provide("fb.core.view.ViewCache");
+goog.require("fb.core.view.CacheNode");
+goog.require("fb.core.snap");
+fb.core.view.ViewCache = function(eventCache, serverCache) {
+  this.eventCache_ = eventCache;
+  this.serverCache_ = serverCache;
+};
+fb.core.view.ViewCache.Empty = new fb.core.view.ViewCache(new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false), new fb.core.view.CacheNode(fb.core.snap.EMPTY_NODE, false, false));
+fb.core.view.ViewCache.prototype.updateEventSnap = function(eventSnap, complete, filtered) {
+  return new fb.core.view.ViewCache(new fb.core.view.CacheNode(eventSnap, complete, filtered), this.serverCache_);
+};
+fb.core.view.ViewCache.prototype.updateServerSnap = function(serverSnap, complete, filtered) {
+  return new fb.core.view.ViewCache(this.eventCache_, new fb.core.view.CacheNode(serverSnap, complete, filtered));
+};
+fb.core.view.ViewCache.prototype.getEventCache = function() {
+  return this.eventCache_;
+};
+fb.core.view.ViewCache.prototype.getCompleteEventSnap = function() {
+  return this.eventCache_.isFullyInitialized() ? this.eventCache_.getNode() : null;
+};
+fb.core.view.ViewCache.prototype.getServerCache = function() {
+  return this.serverCache_;
+};
+fb.core.view.ViewCache.prototype.getCompleteServerSnap = function() {
+  return this.serverCache_.isFullyInitialized() ? this.serverCache_.getNode() : null;
+};
+goog.provide("fb.core.view.View");
+goog.require("fb.core.view.EventGenerator");
+goog.require("fb.core.view.ViewCache");
+goog.require("fb.core.view.ViewProcessor");
+goog.require("fb.core.util");
+fb.core.view.View = function(query, initialViewCache) {
+  this.query_ = query;
+  var params = query.getQueryParams();
+  var indexFilter = new fb.core.view.filter.IndexedFilter(params.getIndex());
+  var filter = params.getNodeFilter();
+  this.processor_ = new fb.core.view.ViewProcessor(filter);
+  var initialServerCache = initialViewCache.getServerCache();
+  var initialEventCache = initialViewCache.getEventCache();
+  var serverSnap = indexFilter.updateFullNode(fb.core.snap.EMPTY_NODE, initialServerCache.getNode(), null);
+  var eventSnap = filter.updateFullNode(fb.core.snap.EMPTY_NODE, initialEventCache.getNode(), null);
+  var newServerCache = new fb.core.view.CacheNode(serverSnap, initialServerCache.isFullyInitialized(), indexFilter.filtersNodes());
+  var newEventCache = new fb.core.view.CacheNode(eventSnap, initialEventCache.isFullyInitialized(), filter.filtersNodes());
+  this.viewCache_ = new fb.core.view.ViewCache(newEventCache, newServerCache);
+  this.eventRegistrations_ = [];
+  this.eventGenerator_ = new fb.core.view.EventGenerator(query);
+};
+fb.core.view.View.prototype.getQuery = function() {
+  return this.query_;
+};
+fb.core.view.View.prototype.getServerCache = function() {
+  return this.viewCache_.getServerCache().getNode();
+};
+fb.core.view.View.prototype.getCompleteServerCache = function(path) {
+  var cache = this.viewCache_.getCompleteServerSnap();
+  if (cache) {
+    if (this.query_.getQueryParams().loadsAllData() || !path.isEmpty() && !cache.getImmediateChild(path.getFront()).isEmpty()) {
+      return cache.getChild(path);
+    }
+  }
+  return null;
+};
+fb.core.view.View.prototype.isEmpty = function() {
+  return this.eventRegistrations_.length === 0;
+};
+fb.core.view.View.prototype.addEventRegistration = function(eventRegistration) {
+  this.eventRegistrations_.push(eventRegistration);
+};
+fb.core.view.View.prototype.removeEventRegistration = function(eventRegistration, cancelError) {
+  var cancelEvents = [];
+  if (cancelError) {
+    fb.core.util.assert(eventRegistration == null, "A cancel should cancel all event registrations.");
+    var path = this.query_.path;
+    goog.array.forEach(this.eventRegistrations_, function(registration) {
+      cancelError = (cancelError);
+      var maybeEvent = registration.createCancelEvent(cancelError, path);
+      if (maybeEvent) {
+        cancelEvents.push(maybeEvent);
+      }
+    });
+  }
+  if (eventRegistration) {
+    var remaining = [];
+    for (var i = 0;i < this.eventRegistrations_.length;++i) {
+      var existing = this.eventRegistrations_[i];
+      if (!existing.matches(eventRegistration)) {
+        remaining.push(existing);
+      } else {
+        if (eventRegistration.hasAnyCallback()) {
+          remaining = remaining.concat(this.eventRegistrations_.slice(i + 1));
+          break;
+        }
+      }
+    }
+    this.eventRegistrations_ = remaining;
+  } else {
+    this.eventRegistrations_ = [];
+  }
+  return cancelEvents;
+};
+fb.core.view.View.prototype.applyOperation = function(operation, writesCache, optCompleteServerCache) {
+  if (operation.type === fb.core.OperationType.MERGE && operation.source.queryId !== null) {
+    fb.core.util.assert(this.viewCache_.getCompleteServerSnap(), "We should always have a full cache before handling merges");
+    fb.core.util.assert(this.viewCache_.getCompleteEventSnap(), "Missing event cache, even though we have a server cache");
+  }
+  var oldViewCache = this.viewCache_;
+  var result = this.processor_.applyOperation(oldViewCache, operation, writesCache, optCompleteServerCache);
+  this.processor_.assertIndexed(result.viewCache);
+  fb.core.util.assert(result.viewCache.getServerCache().isFullyInitialized() || !oldViewCache.getServerCache().isFullyInitialized(), "Once a server snap is complete, it should never go back");
+  this.viewCache_ = result.viewCache;
+  return this.generateEventsForChanges_(result.changes, result.viewCache.getEventCache().getNode(), null);
+};
+fb.core.view.View.prototype.getInitialEvents = function(registration) {
+  var eventSnap = this.viewCache_.getEventCache();
+  var initialChanges = [];
+  if (!eventSnap.getNode().isLeafNode()) {
+    var eventNode = (eventSnap.getNode());
+    eventNode.forEachChild(fb.core.snap.PriorityIndex, function(key, childNode) {
+      initialChanges.push(fb.core.view.Change.childAddedChange(key, childNode));
+    });
+  }
+  if (eventSnap.isFullyInitialized()) {
+    initialChanges.push(fb.core.view.Change.valueChange(eventSnap.getNode()));
+  }
+  return this.generateEventsForChanges_(initialChanges, eventSnap.getNode(), registration);
+};
+fb.core.view.View.prototype.generateEventsForChanges_ = function(changes, eventCache, opt_eventRegistration) {
+  var registrations = opt_eventRegistration ? [opt_eventRegistration] : this.eventRegistrations_;
+  return this.eventGenerator_.generateEventsForChanges(changes, eventCache, registrations);
+};
 goog.provide("fb.core.operation.Merge");
 goog.require("fb.core.util");
 fb.core.operation.Merge = function(source, path, children) {
@@ -7082,10 +7147,114 @@ if (goog.DEBUG) {
     return this.fromUser ? "user" : this.tagged ? "server(queryID=" + this.queryId + ")" : "server";
   };
 }
-;goog.provide("fb.core.util.ImmutableTree");
+;goog.provide("fb.core.ReadonlyRestClient");
+goog.require("fb.core.util");
+goog.require("fb.util");
+goog.require("fb.util.json");
+goog.require("fb.util.jwt");
+goog.require("fb.util.obj");
+fb.core.ReadonlyRestClient = goog.defineClass(null, {constructor:function(repoInfo, onDataUpdate) {
+  this.log_ = fb.core.util.logWrapper("p:rest:");
+  this.repoInfo_ = repoInfo;
+  this.onDataUpdate_ = onDataUpdate;
+  this.credential_ = null;
+  this.listens_ = {};
+}, listen:function(query, currentHashFn, tag, onComplete) {
+  var pathString = query.path.toString();
+  this.log_("Listen called for " + pathString + " " + query.queryIdentifier());
+  var listenId = fb.core.ReadonlyRestClient.getListenId_(query, tag);
+  var thisListen = new Object;
+  this.listens_[listenId] = thisListen;
+  var queryStringParamaters = query.getQueryParams().toRestQueryStringParameters();
+  var self = this;
+  this.restRequest_(pathString + ".json", queryStringParamaters, function(error, result) {
+    var data = result;
+    if (error === 404) {
+      data = null;
+      error = null;
+    }
+    if (error === null) {
+      self.onDataUpdate_(pathString, data, false, tag);
+    }
+    if (fb.util.obj.get(self.listens_, listenId) === thisListen) {
+      var status;
+      if (!error) {
+        status = "ok";
+      } else {
+        if (error == 401) {
+          status = "permission_denied";
+        } else {
+          status = "rest_error:" + error;
+        }
+      }
+      onComplete(status, null);
+    }
+  });
+}, unlisten:function(query, tag) {
+  var listenId = fb.core.ReadonlyRestClient.getListenId_(query, tag);
+  delete this.listens_[listenId];
+}, auth:function(cred, opt_callback, opt_cancelCallback) {
+  this.credential_ = cred;
+  var res = fb.util.jwt.decode(cred);
+  var auth = res.data;
+  var expires = res.claims && res.claims["exp"];
+  if (opt_callback) {
+    opt_callback("ok", {"auth":auth, "expires":expires});
+  }
+}, unauth:function(onComplete) {
+  this.credential_ = null;
+  onComplete("ok", null);
+}, onDisconnectPut:function(pathString, data, opt_onComplete) {
+}, onDisconnectMerge:function(pathString, data, opt_onComplete) {
+}, onDisconnectCancel:function(pathString, opt_onComplete) {
+}, put:function(pathString, data, opt_onComplete, opt_hash) {
+}, merge:function(pathString, data, onComplete, opt_hash) {
+}, reportStats:function(stats) {
+}, restRequest_:function(pathString, queryStringParameters, callback) {
+  queryStringParameters = queryStringParameters || {};
+  queryStringParameters["format"] = "export";
+  if (this.credential_) {
+    queryStringParameters["auth"] = this.credential_;
+  }
+  var url = (this.repoInfo_.secure ? "https://" : "http://") + this.repoInfo_.host + pathString + "?" + fb.util.querystring(queryStringParameters);
+  this.log_("Sending REST request for " + url);
+  var xhr = new XMLHttpRequest;
+  var self = this;
+  xhr.onreadystatechange = function() {
+    if (callback && xhr.readyState === 4) {
+      self.log_("REST Response for " + url + " received. status:", xhr.status, "response:", xhr.responseText);
+      var res = null;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          res = fb.util.json.eval(xhr.responseText);
+        } catch (e) {
+          fb.core.util.warn("Failed to parse JSON response for " + url + ": " + xhr.responseText);
+        }
+        callback(null, res);
+      } else {
+        if (xhr.status !== 401 && xhr.status !== 404) {
+          fb.core.util.warn("Got unsuccessful REST response for " + url + " Status: " + xhr.status);
+        }
+        callback(xhr.status);
+      }
+      callback = null;
+    }
+  };
+  xhr.open("GET", url, true);
+  xhr.send();
+}, statics:{getListenId_:function(query, opt_tag) {
+  if (goog.isDef(opt_tag)) {
+    return "tag$" + opt_tag;
+  } else {
+    fb.core.util.assert(query.getQueryParams().isDefault(), "should have a tag if it's not a default query.");
+    return query.path.toString();
+  }
+}}});
+goog.provide("fb.core.util.ImmutableTree");
 goog.require("fb.core.util");
 goog.require("fb.core.util.Path");
 goog.require("fb.core.util.SortedMap");
+goog.require("fb.util.json");
 goog.require("fb.util.obj");
 goog.require("goog.object");
 fb.core.util.ImmutableTree = goog.defineClass(null, {constructor:function(value, opt_children) {
@@ -8029,16 +8198,6 @@ fb.core.SyncTree.prototype.removeTags_ = function(queries) {
     }
   }
 };
-fb.core.SyncTree.prototype.warnOnNoIndex_ = function(payload, query) {
-  if (payload && typeof payload === "object" && fb.util.obj.contains(payload, "w")) {
-    var warnings = fb.util.obj.get(payload, "w");
-    if (goog.isArray(warnings) && goog.array.contains(warnings, "no_index")) {
-      var indexSpec = '".indexOn": "' + query.getQueryParams().getIndex().toString() + '"';
-      var indexPath = query.path.toString();
-      fb.core.util.warn("Using an unspecified index. Consider adding " + indexSpec + " at " + indexPath + " to your security rules for better performance");
-    }
-  }
-};
 fb.core.SyncTree.prototype.setupListener_ = function(query, view) {
   var path = query.path;
   var tag = this.tagForQuery_(query);
@@ -8080,7 +8239,6 @@ fb.core.SyncTree.prototype.createListenerForView_ = function(view) {
     return cache.hash();
   }, onComplete:function(status, data) {
     if (status === "ok") {
-      self.warnOnNoIndex_(data, query);
       if (tag) {
         return self.applyTaggedListenComplete(query.path, tag);
       } else {
@@ -8163,8 +8321,104 @@ fb.core.SyncTree.prototype.applyOperationDescendantsHelper_ = function(operation
   }
   return events;
 };
+goog.provide("fb.core.util.Tree");
+goog.require("fb.core.util");
+goog.require("fb.core.util.Path");
+goog.require("fb.util.obj");
+goog.require("goog.object");
+fb.core.util.TreeNode = goog.defineClass(null, {constructor:function() {
+  this.children = {};
+  this.childCount = 0;
+  this.value = null;
+}});
+fb.core.util.Tree = goog.defineClass(null, {constructor:function(opt_name, opt_parent, opt_node) {
+  this.name_ = opt_name ? opt_name : "";
+  this.parent_ = opt_parent ? opt_parent : null;
+  this.node_ = opt_node ? opt_node : new fb.core.util.TreeNode;
+}, subTree:function(pathObj) {
+  var path = pathObj instanceof fb.core.util.Path ? pathObj : new fb.core.util.Path(pathObj);
+  var child = this, next;
+  while ((next = path.getFront()) !== null) {
+    var childNode = fb.util.obj.get(child.node_.children, next) || new fb.core.util.TreeNode;
+    child = new fb.core.util.Tree(next, child, childNode);
+    path = path.popFront();
+  }
+  return child;
+}, getValue:function() {
+  return this.node_.value;
+}, setValue:function(value) {
+  fb.core.util.assert(typeof value !== "undefined", "Cannot set value to undefined");
+  this.node_.value = value;
+  this.updateParents_();
+}, clear:function() {
+  this.node_.value = null;
+  this.node_.children = {};
+  this.node_.childCount = 0;
+  this.updateParents_();
+}, hasChildren:function() {
+  return this.node_.childCount > 0;
+}, isEmpty:function() {
+  return this.getValue() === null && !this.hasChildren();
+}, forEachChild:function(action) {
+  var self = this;
+  goog.object.forEach(this.node_.children, function(childTree, child) {
+    action(new fb.core.util.Tree(child, self, childTree));
+  });
+}, forEachDescendant:function(action, opt_includeSelf, opt_childrenFirst) {
+  if (opt_includeSelf && !opt_childrenFirst) {
+    action(this);
+  }
+  this.forEachChild(function(child) {
+    child.forEachDescendant(action, true, opt_childrenFirst);
+  });
+  if (opt_includeSelf && opt_childrenFirst) {
+    action(this);
+  }
+}, forEachAncestor:function(action, opt_includeSelf) {
+  var node = opt_includeSelf ? this : this.parent();
+  while (node !== null) {
+    if (action(node)) {
+      return true;
+    }
+    node = node.parent();
+  }
+  return false;
+}, forEachImmediateDescendantWithValue:function(action) {
+  this.forEachChild(function(child) {
+    if (child.getValue() !== null) {
+      action(child);
+    } else {
+      child.forEachImmediateDescendantWithValue(action);
+    }
+  });
+}, path:function() {
+  return new fb.core.util.Path(this.parent_ === null ? this.name_ : this.parent_.path() + "/" + this.name_);
+}, name:function() {
+  return this.name_;
+}, parent:function() {
+  return this.parent_;
+}, updateParents_:function() {
+  if (this.parent_ !== null) {
+    this.parent_.updateChild_(this.name_, this);
+  }
+}, updateChild_:function(childName, child) {
+  var childEmpty = child.isEmpty();
+  var childExists = fb.util.obj.contains(this.node_.children, childName);
+  if (childEmpty && childExists) {
+    delete this.node_.children[childName];
+    this.node_.childCount--;
+    this.updateParents_();
+  } else {
+    if (!childEmpty && !childExists) {
+      this.node_.children[childName] = child.node_;
+      this.node_.childCount++;
+      this.updateParents_();
+    }
+  }
+}});
 goog.provide("fb.core.util.EventEmitter");
 goog.require("fb.core.util");
+goog.require("goog.array");
 fb.core.util.EventEmitter = goog.defineClass(null, {constructor:function(allowedEvents) {
   fb.core.util.assert(goog.isArray(allowedEvents) && allowedEvents.length > 0, "Requires a non-empty array");
   this.allowedEvents_ = allowedEvents;
@@ -8230,6 +8484,7 @@ fb.core.util.nextPushId = function() {
   };
 }();
 goog.provide("fb.core.util.OnlineMonitor");
+goog.require("fb.core.util");
 goog.require("fb.core.util.EventEmitter");
 fb.core.util.OnlineMonitor = goog.defineClass(fb.core.util.EventEmitter, {constructor:function() {
   fb.core.util.EventEmitter.call(this, ["online"]);
@@ -8298,10 +8553,13 @@ fb.core.util.VisibilityMonitor = goog.defineClass(fb.core.util.EventEmitter, {co
 }});
 goog.addSingletonGetter(fb.core.util.VisibilityMonitor);
 goog.provide("fb.core.util.validation");
+goog.require("fb.core.util");
+goog.require("fb.core.util.Path");
+goog.require("fb.core.util.ValidationPath");
 goog.require("fb.util.obj");
 goog.require("fb.util.utf8");
 goog.require("fb.util.validation");
-fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, INVALID_PATH_REGEX_:/[\[\].#$\u0000-\u001F\u007F]/, MAX_LEAF_SIZE_:10 * 1024 * 1024, MAX_DEPTH_SIZE_:1E3, isValidKey:function(key) {
+fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, INVALID_PATH_REGEX_:/[\[\].#$\u0000-\u001F\u007F]/, MAX_LEAF_SIZE_:10 * 1024 * 1024, isValidKey:function(key) {
   return goog.isString(key) && key.length !== 0 && !fb.core.util.validation.INVALID_KEY_REGEX_.test(key);
 }, isValidPathString:function(pathString) {
   return goog.isString(pathString) && pathString.length !== 0 && !fb.core.util.validation.INVALID_PATH_REGEX_.test(pathString);
@@ -8312,30 +8570,26 @@ fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, 
   return fb.core.util.validation.isValidPathString(pathString);
 }, isValidPriority:function(priority) {
   return priority === null || goog.isString(priority) || goog.isNumber(priority) && !fb.core.util.isInvalidJSONNumber(priority) || goog.isObject(priority) && fb.util.obj.contains(priority, ".sv");
-}, validateFirebaseDataArg:function(fnName, argumentNumber, data, optional) {
+}, validateFirebaseDataArg:function(fnName, argumentNumber, data, path, optional) {
   if (optional && !goog.isDef(data)) {
     return;
   }
-  fb.core.util.validation.validateFirebaseData(fb.util.validation.errorPrefix(fnName, argumentNumber, optional), data);
-}, validateFirebaseData:function(errorPrefix, data, opt_depth, opt_path) {
-  if (!opt_depth) {
-    opt_depth = 0;
+  fb.core.util.validation.validateFirebaseData(fb.util.validation.errorPrefix(fnName, argumentNumber, optional), data, path);
+}, validateFirebaseData:function(errorPrefix, data, path) {
+  if (path instanceof fb.core.util.Path) {
+    path = new fb.core.util.ValidationPath(path, errorPrefix);
   }
-  var path = opt_path || [];
   if (!goog.isDef(data)) {
-    throw new Error(errorPrefix + "contains undefined" + fb.core.util.validation.pathLocation_(path));
+    throw new Error(errorPrefix + "contains undefined " + path.toErrorString());
   }
   if (goog.isFunction(data)) {
-    throw new Error(errorPrefix + "contains a function" + fb.core.util.validation.pathLocation_(path) + " with contents: " + data.toString());
+    throw new Error(errorPrefix + "contains a function " + path.toErrorString() + " with contents: " + data.toString());
   }
   if (fb.core.util.isInvalidJSONNumber(data)) {
-    throw new Error(errorPrefix + "contains " + data.toString() + fb.core.util.validation.pathLocation_(path));
+    throw new Error(errorPrefix + "contains " + data.toString() + " " + path.toErrorString());
   }
-  if (opt_depth > fb.core.util.validation.MAX_DEPTH_SIZE_) {
-    throw new TypeError(errorPrefix + "contains a cyclic object value (" + path.slice(0, 100).join(".") + "...)");
-  }
-  if (goog.isString(data) && data.length > fb.core.util.validation.MAX_LEAF_SIZE_ / 3 && fb.util.utf8.stringToByteArray(data).length > fb.core.util.validation.MAX_LEAF_SIZE_) {
-    throw new Error(errorPrefix + "contains a string greater than " + fb.core.util.validation.MAX_LEAF_SIZE_ + " utf8 bytes" + fb.core.util.validation.pathLocation_(path) + " ('" + data.substring(0, 50) + "...')");
+  if (goog.isString(data) && data.length > fb.core.util.validation.MAX_LEAF_SIZE_ / 3 && fb.util.utf8.stringLength(data) > fb.core.util.validation.MAX_LEAF_SIZE_) {
+    throw new Error(errorPrefix + "contains a string greater than " + fb.core.util.validation.MAX_LEAF_SIZE_ + " utf8 bytes " + path.toErrorString() + " ('" + data.substring(0, 50) + "...')");
   }
   if (goog.isObject(data)) {
     var hasDotValue = false, hasActualChild = false;
@@ -8346,25 +8600,19 @@ fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, 
         if (key !== ".priority" && key !== ".sv") {
           hasActualChild = true;
           if (!fb.core.util.validation.isValidKey(key)) {
-            throw new Error(errorPrefix + " contains an invalid key (" + key + ")" + fb.core.util.validation.pathLocation_(path) + ".  Keys must be non-empty strings " + 'and can\'t contain ".", "#", "$", "/", "[", or "]"');
+            throw new Error(errorPrefix + " contains an invalid key (" + key + ") " + path.toErrorString() + ".  Keys must be non-empty strings " + 'and can\'t contain ".", "#", "$", "/", "[", or "]"');
           }
         }
       }
       path.push(key);
-      fb.core.util.validation.validateFirebaseData(errorPrefix, value, opt_depth + 1, path);
+      fb.core.util.validation.validateFirebaseData(errorPrefix, value, path);
       path.pop();
     });
     if (hasDotValue && hasActualChild) {
-      throw new Error(errorPrefix + ' contains ".value" child' + fb.core.util.validation.pathLocation_(path) + " in addition to actual children.");
+      throw new Error(errorPrefix + ' contains ".value" child ' + path.toErrorString() + " in addition to actual children.");
     }
   }
-}, pathLocation_:function(path) {
-  if (path.length == 0) {
-    return "";
-  } else {
-    return " in property '" + path.join(".") + "'";
-  }
-}, validateFirebaseMergeDataArg:function(fnName, argumentNumber, data, optional) {
+}, validateFirebaseMergeDataArg:function(fnName, argumentNumber, data, path, optional) {
   if (optional && !goog.isDef(data)) {
     return;
   }
@@ -8374,7 +8622,7 @@ fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, 
   if (fb.util.obj.contains(data, ".value")) {
     throw new Error(fb.util.validation.errorPrefix(fnName, argumentNumber, optional) + ' must not contain ".value".  ' + "To overwrite with a leaf value, just use .set() instead.");
   }
-  fb.core.util.validation.validateFirebaseDataArg(fnName, argumentNumber, data, optional);
+  fb.core.util.validation.validateFirebaseDataArg(fnName, argumentNumber, data, path, optional);
 }, validatePriority:function(fnName, argumentNumber, priority, optional) {
   if (optional && !goog.isDef(priority)) {
     return;
@@ -8475,6 +8723,7 @@ fb.core.util.validation = {INVALID_KEY_REGEX_:/[\[\].#$\/\u0000-\u001F\u007F]/, 
 }};
 goog.provide("fb.core.util.CountedSet");
 goog.require("fb.core.util");
+goog.require("fb.util.obj");
 goog.require("goog.object");
 fb.core.util.CountedSet = goog.defineClass(null, {constructor:function() {
   this.set = {};
@@ -8725,6 +8974,7 @@ fb.login.util.environment.isModernIE = function() {
 };
 goog.provide("fb.login.transports.util");
 goog.require("fb.login.Constants");
+goog.require("fb.util");
 fb.login.transports.util.findRelay = function() {
   var loc = window["location"], frames = window["opener"]["frames"], i;
   for (i = frames.length - 1;i >= 0;i--) {
@@ -8769,7 +9019,7 @@ fb.login.transports.util.extractRedirectCompletionHash = function(hashStr) {
   var hash = "";
   try {
     hashStr = hashStr.replace("#", "");
-    var hashObj = fb.login.transports.util.querystringDecode(hashStr);
+    var hashObj = fb.util.querystringDecode(hashStr);
     if (hashObj && fb.util.obj.contains(hashObj, fb.login.Constants.REDIR_REQUEST_COMPLETION_KEY)) {
       hash = fb.util.obj.get(hashObj, fb.login.Constants.REDIR_REQUEST_COMPLETION_KEY);
     }
@@ -8783,33 +9033,6 @@ fb.login.transports.util.replaceRedirectCompletionHash = function() {
     document.location.hash = document.location.hash.replace(exp, "");
   } catch (e) {
   }
-};
-fb.login.transports.util.querystring = function(obj) {
-  var params = [];
-  for (var key in obj) {
-    if (fb.util.obj.contains(obj, key)) {
-      var val = fb.util.obj.get(obj, key);
-      if (goog.isArray(val)) {
-        for (var i = 0;i < val.length;i++) {
-          params.push(encodeURIComponent(key) + "=" + encodeURIComponent(val[i]));
-        }
-      } else {
-        params.push(encodeURIComponent(key) + "=" + encodeURIComponent(fb.util.obj.get(obj, key)));
-      }
-    }
-  }
-  return params ? "&" + params.join("&") : "";
-};
-fb.login.transports.util.querystringDecode = function(str) {
-  var obj = {};
-  var tokens = str.replace(/^\?/, "").split("&");
-  for (var i = 0;i < tokens.length;i++) {
-    if (tokens[i]) {
-      var key = tokens[i].split("=");
-      obj[key[0]] = key[1];
-    }
-  }
-  return obj;
 };
 fb.login.transports.util.getBaseUrl = function() {
   var parsedUrl = fb.core.util.parseURL(fb.login.Constants.SERVER_HOST);
@@ -8913,6 +9136,7 @@ goog.require("fb.constants");
 goog.require("fb.core.storage");
 goog.require("fb.login.Transport");
 goog.require("fb.login.transports.util");
+goog.require("fb.util");
 fb.login.transports.Redirect = function(options) {
   this.requestId_ = goog.string.getRandomString() + goog.string.getRandomString() + goog.string.getRandomString();
   this.options_ = options;
@@ -8922,7 +9146,7 @@ fb.login.transports.Redirect.prototype.open = function(url, params, cb) {
   fb.core.storage.SessionStorage.set(fb.login.Constants.REDIR_REQUEST_ID_KEY, this.requestId_);
   params["requestId"] = this.requestId_;
   params["redirectTo"] = params["redirectTo"] || window["location"]["href"];
-  url += (/\?/.test(url) ? "" : "?") + fb.login.transports.util.querystring(params);
+  url += (/\?/.test(url) ? "" : "?") + fb.util.querystring(params);
   window["location"] = url;
 };
 fb.login.transports.Redirect["isAvailable"] = function() {
@@ -8946,6 +9170,7 @@ goog.require("fb.login.Errors");
 goog.require("fb.login.Transport");
 goog.require("fb.login.transports.util");
 goog.require("fb.login.util.environment");
+goog.require("fb.util");
 goog.require("fb.util.json");
 fb.login.transports.Popup = function(options) {
   if (!options["window_features"] || fb.login.util.environment.isMobileFirefox()) {
@@ -8978,7 +9203,7 @@ fb.login.transports.Popup.prototype.open = function(url, params, cb) {
     document["body"]["appendChild"](iframe);
     messageTarget = iframe["contentWindow"];
   }
-  url += (/\?/.test(url) ? "" : "?") + fb.login.transports.util.querystring(params);
+  url += (/\?/.test(url) ? "" : "?") + fb.util.querystring(params);
   var popup = window.open(url, self.options["window_name"], self.options["window_features"]);
   if (!messageTarget) {
     messageTarget = popup;
@@ -9056,6 +9281,7 @@ goog.require("fb.login.Errors");
 goog.require("fb.login.Transport");
 goog.require("fb.login.transports.util");
 goog.require("fb.login.util.environment");
+goog.require("fb.util");
 goog.require("fb.util.json");
 fb.login.transports.NodeHttp = function(options) {
   if (!options["method"]) {
@@ -9076,7 +9302,7 @@ fb.login.transports.NodeHttp.prototype.open = function(url, params, cb) {
   goog.object.extend(headers, this.options["headers"]);
   var requestOpts = {"host":parsedUrl.host.split(":")[0], "port":parsedUrl.port, "path":parsedUrl.pathString, "method":this.options["method"].toUpperCase()};
   if (method === "GET") {
-    requestOpts["path"] += (/\?/.test(requestOpts["path"]) ? "" : "?") + fb.login.transports.util.querystring(params);
+    requestOpts["path"] += (/\?/.test(requestOpts["path"]) ? "" : "?") + fb.util.querystring(params);
     payload = null;
   } else {
     var contentType = this.options["headers"]["content_type"];
@@ -9084,7 +9310,7 @@ fb.login.transports.NodeHttp.prototype.open = function(url, params, cb) {
       payload = fb.util.json.stringify(params);
     }
     if (contentType === "application/x-www-form-urlencoded") {
-      payload = fb.login.transports.util.querystring(params);
+      payload = fb.util.querystring(params);
     }
     headers["Content-Length"] = Buffer["byteLength"](payload, "utf8");
   }
@@ -9131,6 +9357,7 @@ goog.require("fb.login.Errors");
 goog.require("fb.login.Transport");
 goog.require("fb.login.transports.util");
 goog.require("fb.login.util.environment");
+goog.require("fb.util");
 goog.require("fb.util.json");
 fb.login.transports.XHR = function(options) {
   if (!options["method"]) {
@@ -9176,7 +9403,7 @@ fb.login.transports.XHR.prototype.open = function(url, params, cb) {
     }
   };
   if (method === "GET") {
-    url += (/\?/.test(url) ? "" : "?") + fb.login.transports.util.querystring(params);
+    url += (/\?/.test(url) ? "" : "?") + fb.util.querystring(params);
     payload = null;
   } else {
     var contentType = this.options["headers"]["content_type"];
@@ -9184,7 +9411,7 @@ fb.login.transports.XHR.prototype.open = function(url, params, cb) {
       payload = fb.util.json.stringify(params);
     }
     if (contentType === "application/x-www-form-urlencoded") {
-      payload = fb.login.transports.util.querystring(params);
+      payload = fb.util.querystring(params);
     }
   }
   xhr.open(method, url, true);
@@ -9210,6 +9437,7 @@ goog.require("fb.login.Transport");
 goog.require("fb.login.transports.XHR");
 goog.require("fb.login.transports.util");
 goog.require("fb.login.util.environment");
+goog.require("fb.util");
 goog.require("fb.util.json");
 fb.login.transports.CordovaInAppBrowser = function(options) {
   this.requestId_ = goog.string.getRandomString() + goog.string.getRandomString() + goog.string.getRandomString();
@@ -9235,7 +9463,7 @@ fb.login.transports.CordovaInAppBrowser.prototype.open = function(url, params, c
   params["requestId"] = this.requestId_;
   params[fb.login.Constants.CLIENT_OPTION_REDIRECT_TO] = parsedUrl.scheme + "://" + parsedUrl.host + fb.login.Constants.INTERNAL_REDIRECT_SENTINAL_PATH;
   url += /\?/.test(url) ? "" : "?";
-  url += fb.login.transports.util.querystring(params);
+  url += fb.util.querystring(params);
   windowRef = window.open(url, "_blank", "location=no");
   if (!windowRef || !goog.isFunction(windowRef.addEventListener)) {
     cb(fb.login.Errors.get("TRANSPORT_UNAVAILABLE"));
@@ -9266,6 +9494,7 @@ goog.require("fb.login.Constants");
 goog.require("fb.login.Errors");
 goog.require("fb.login.Transport");
 goog.require("fb.login.transports.util");
+goog.require("fb.util");
 goog.require("fb.util.json");
 fb.login.transports.JSONP = function(options) {
   if (!options["callback_parameter"]) {
@@ -9277,7 +9506,7 @@ fb.login.transports.JSONP = function(options) {
 fb.login.transports.JSONP.prototype.open = function(url, params, cb) {
   var id = "fn" + (new Date).getTime() + Math.floor(Math.random() * 99999);
   params[this.options["callback_parameter"]] = fb.login.Constants.JSONP_CALLBACK_NAMESPACE + "." + id;
-  url += (/\?/.test(url) ? "" : "?") + fb.login.transports.util.querystring(params);
+  url += (/\?/.test(url) ? "" : "?") + fb.util.querystring(params);
   function handleInterrupt_(e) {
     if (cb) {
       cb(fb.login.Errors.get("REQUEST_INTERRUPTED"));
@@ -10743,6 +10972,7 @@ goog.provide("fb.core.PersistentConnection");
 goog.require("fb.core.util");
 goog.require("fb.core.util.OnlineMonitor");
 goog.require("fb.core.util.VisibilityMonitor");
+goog.require("fb.core.ServerActions");
 goog.require("fb.realtime.Connection");
 goog.require("fb.util.json");
 goog.require("fb.util.jwt");
@@ -10795,39 +11025,53 @@ fb.core.PersistentConnection.prototype.listen = function(query, currentHashFn, t
   this.log_("Listen called for " + pathString + " " + queryId);
   this.listens_[pathString] = this.listens_[pathString] || {};
   fb.core.util.assert(!this.listens_[pathString][queryId], "listen() called twice for same path/queryId.");
-  var listenSpec = {onComplete:onComplete, hashFn:currentHashFn, queryObj:query.queryObject(), tag:tag};
+  var listenSpec = {onComplete:onComplete, hashFn:currentHashFn, query:query, tag:tag};
   this.listens_[pathString][queryId] = listenSpec;
   if (this.connected_) {
-    this.sendListen_(pathString, queryId, listenSpec);
+    this.sendListen_(listenSpec);
   }
 };
-fb.core.PersistentConnection.prototype.sendListen_ = function(pathString, queryId, listenSpec) {
+fb.core.PersistentConnection.prototype.sendListen_ = function(listenSpec) {
+  var query = listenSpec.query;
+  var pathString = query.path.toString();
+  var queryId = query.queryIdentifier();
   var self = this;
   this.log_("Listen on " + pathString + " for " + queryId);
   var req = {"p":pathString};
   var action = "q";
   if (listenSpec.tag) {
-    req["q"] = listenSpec.queryObj;
+    req["q"] = query.queryObject();
     req["t"] = listenSpec.tag;
   }
   req["h"] = listenSpec.hashFn();
   this.sendRequest(action, req, function(message) {
+    var payload = message["d"];
+    var status = message["s"];
+    self.warnOnListenWarnings_(payload, query);
     var currentListenSpec = self.listens_[pathString] && self.listens_[pathString][queryId];
     if (currentListenSpec === listenSpec) {
       self.log_("listen response", message);
-      var status = message["s"];
       if (status !== "ok") {
         self.removeListen_(pathString, queryId);
       }
-      var payload = message["d"];
       if (listenSpec.onComplete) {
         listenSpec.onComplete(status, payload);
       }
     }
   });
 };
-fb.core.PersistentConnection.prototype.auth = function(cred, callback, cancelCallback) {
-  this.credential_ = {cred:cred, firstRequestSent:false, callback:callback, cancelCallback:cancelCallback};
+fb.core.PersistentConnection.prototype.warnOnListenWarnings_ = function(payload, query) {
+  if (payload && typeof payload === "object" && fb.util.obj.contains(payload, "w")) {
+    var warnings = fb.util.obj.get(payload, "w");
+    if (goog.isArray(warnings) && goog.array.contains(warnings, "no_index")) {
+      var indexSpec = '".indexOn": "' + query.getQueryParams().getIndex().toString() + '"';
+      var indexPath = query.path.toString();
+      fb.core.util.warn("Using an unspecified index. Consider adding " + indexSpec + " at " + indexPath + " to your security rules for better performance");
+    }
+  }
+};
+fb.core.PersistentConnection.prototype.auth = function(cred, opt_callback, opt_cancelCallback) {
+  this.credential_ = {cred:cred, firstRequestSent:false, callback:opt_callback, cancelCallback:opt_cancelCallback};
   this.log_("Authenticating using credential: " + cred);
   this.tryAuth();
   this.reduceReconnectDelayIfAdminCredential_(cred);
@@ -11195,8 +11439,8 @@ fb.core.PersistentConnection.prototype.restoreState_ = function() {
   this.tryAuth();
   var self = this;
   goog.object.forEach(this.listens_, function(queries, pathString) {
-    goog.object.forEach(queries, function(listenData, queryId) {
-      self.sendListen_(pathString, queryId, listenData);
+    goog.object.forEach(queries, function(listenSpec) {
+      self.sendListen_(listenSpec);
     });
   });
   for (var i = 0;i < this.outstandingPuts_.length;i++) {
@@ -11225,7 +11469,7 @@ fb.api.INTERNAL.forceWebSockets = function() {
 };
 goog.exportProperty(fb.api.INTERNAL, "forceWebSockets", fb.api.INTERNAL.forceWebSockets);
 fb.api.INTERNAL.setSecurityDebugCallback = function(ref, callback) {
-  ref.repo.connection_.securityDebugCallback_ = callback;
+  ref.repo.persistentConnection_.securityDebugCallback_ = callback;
 };
 goog.exportProperty(fb.api.INTERNAL, "setSecurityDebugCallback", fb.api.INTERNAL.setSecurityDebugCallback);
 fb.api.INTERNAL.stats = function(ref, showDelta) {
@@ -11345,6 +11589,7 @@ goog.exportProperty(fb.api.DataSnapshot.prototype, "ref", fb.api.DataSnapshot.pr
 goog.provide("fb.core.Repo");
 goog.require("fb.api.DataSnapshot");
 goog.require("fb.core.PersistentConnection");
+goog.require("fb.core.ReadonlyRestClient");
 goog.require("fb.core.SnapshotHolder");
 goog.require("fb.core.SparseSnapshotTree");
 goog.require("fb.core.SyncTree");
@@ -11356,18 +11601,26 @@ goog.require("fb.core.util");
 goog.require("fb.core.util.ServerValues");
 goog.require("fb.core.util.Tree");
 goog.require("fb.core.view.EventQueue");
+goog.require("fb.login.AuthenticationManager");
 goog.require("fb.util.json");
 goog.require("fb.util.jwt");
 goog.require("goog.string");
-goog.require("fb.login.AuthenticationManager");
-fb.core.Repo = function(repoInfo) {
+fb.core.Repo = function(repoInfo, forceRestClient) {
   this.repoInfo_ = repoInfo;
   this.stats_ = fb.core.stats.StatsManager.getCollection(repoInfo);
   this.eventQueue_ = new fb.core.view.EventQueue;
   this.nextWriteId_ = 1;
-  this.connection_ = new fb.core.PersistentConnection(this.repoInfo_, goog.bind(this.onDataUpdate_, this), goog.bind(this.onConnectStatus_, this), goog.bind(this.onServerInfoUpdate_, this));
+  this.persistentConnection_ = null;
+  this.server_;
+  if (forceRestClient || fb.core.util.beingCrawled()) {
+    this.server_ = new fb.core.ReadonlyRestClient(this.repoInfo_, goog.bind(this.onDataUpdate_, this));
+    setTimeout(goog.bind(this.onConnectStatus_, this, true), 0);
+  } else {
+    this.persistentConnection_ = new fb.core.PersistentConnection(this.repoInfo_, goog.bind(this.onDataUpdate_, this), goog.bind(this.onConnectStatus_, this), goog.bind(this.onServerInfoUpdate_, this));
+    this.server_ = this.persistentConnection_;
+  }
   this.statsReporter_ = fb.core.stats.StatsManager.getOrCreateReporter(repoInfo, goog.bind(function() {
-    return new fb.core.stats.StatsReporter(this.stats_, this.connection_);
+    return new fb.core.stats.StatsReporter(this.stats_, this.server_);
   }, this));
   this.transactions_init_();
   this.infoData_ = new fb.core.SnapshotHolder;
@@ -11385,17 +11638,17 @@ fb.core.Repo = function(repoInfo) {
   }, stopListening:goog.nullFunction});
   this.updateInfo_("connected", false);
   this.onDisconnect_ = new fb.core.SparseSnapshotTree;
-  this.auth = new fb.login.AuthenticationManager(repoInfo, goog.bind(this.connection_.auth, this.connection_), goog.bind(this.connection_.unauth, this.connection_), goog.bind(this.onAuthStatus_, this));
+  this.auth = new fb.login.AuthenticationManager(repoInfo, goog.bind(this.server_.auth, this.server_), goog.bind(this.server_.unauth, this.server_), goog.bind(this.onAuthStatus_, this));
   this.dataUpdateCount = 0;
   this.interceptServerDataCallback_ = null;
   this.serverSyncTree_ = new fb.core.SyncTree({startListening:function(query, tag, currentHashFn, onComplete) {
-    self.connection_.listen(query, currentHashFn, tag, function(status, data) {
+    self.server_.listen(query, currentHashFn, tag, function(status, data) {
       var events = onComplete(status, data);
       self.eventQueue_.raiseEventsForChangedPath(query.path, events);
     });
     return[];
   }, stopListening:function(query, tag) {
-    self.connection_.unlisten(query, tag);
+    self.server_.unlisten(query, tag);
   }});
 };
 fb.core.Repo.prototype.toString = function() {
@@ -11481,7 +11734,7 @@ fb.core.Repo.prototype.setWithPriority = function(path, newVal, newPriority, onC
   var events = this.serverSyncTree_.applyUserOverwrite(path, newNode, writeId, true);
   this.eventQueue_.queueEvents(events);
   var self = this;
-  this.connection_.put(path.toString(), newNodeUnresolved.val(true), function(status, errorReason) {
+  this.server_.put(path.toString(), newNodeUnresolved.val(true), function(status, errorReason) {
     var success = status === "ok";
     if (!success) {
       fb.core.util.warn("set at " + path + " failed: " + status);
@@ -11509,8 +11762,7 @@ fb.core.Repo.prototype.update = function(path, childrenToMerge, onComplete) {
     var events = this.serverSyncTree_.applyUserMerge(path, changedChildren, writeId);
     this.eventQueue_.queueEvents(events);
     var self = this;
-    this.connection_.merge(path.toString(), childrenToMerge, function(status, errorReason) {
-      fb.core.util.assert(status === "ok" || status === "permission_denied", "merge at " + path + " failed.");
+    this.server_.merge(path.toString(), childrenToMerge, function(status, errorReason) {
       var success = status === "ok";
       if (!success) {
         fb.core.util.warn("update at " + path + " failed: " + status);
@@ -11547,7 +11799,7 @@ fb.core.Repo.prototype.runOnDisconnectEvents_ = function() {
 };
 fb.core.Repo.prototype.onDisconnectCancel = function(path, onComplete) {
   var self = this;
-  this.connection_.onDisconnectCancel(path.toString(), function(status, errorReason) {
+  this.server_.onDisconnectCancel(path.toString(), function(status, errorReason) {
     if (status === "ok") {
       self.onDisconnect_.forget(path);
     }
@@ -11557,7 +11809,7 @@ fb.core.Repo.prototype.onDisconnectCancel = function(path, onComplete) {
 fb.core.Repo.prototype.onDisconnectSet = function(path, value, onComplete) {
   var self = this;
   var newNode = fb.core.snap.NodeFromJSON(value);
-  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
+  this.server_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
     if (status === "ok") {
       self.onDisconnect_.remember(path, newNode);
     }
@@ -11567,7 +11819,7 @@ fb.core.Repo.prototype.onDisconnectSet = function(path, value, onComplete) {
 fb.core.Repo.prototype.onDisconnectSetWithPriority = function(path, value, priority, onComplete) {
   var self = this;
   var newNode = fb.core.snap.NodeFromJSON(value, priority);
-  this.connection_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
+  this.server_.onDisconnectPut(path.toString(), newNode.val(true), function(status, errorReason) {
     if (status === "ok") {
       self.onDisconnect_.remember(path, newNode);
     }
@@ -11585,7 +11837,7 @@ fb.core.Repo.prototype.onDisconnectUpdate = function(path, childrenToMerge, onCo
     return;
   }
   var self = this;
-  this.connection_.onDisconnectMerge(path.toString(), childrenToMerge, function(status, errorReason) {
+  this.server_.onDisconnectMerge(path.toString(), childrenToMerge, function(status, errorReason) {
     if (status === "ok") {
       for (var childName in childrenToMerge) {
         var newChildNode = fb.core.snap.NodeFromJSON(childrenToMerge[childName]);
@@ -11618,10 +11870,14 @@ fb.core.Repo.prototype.removeEventCallbackForQuery = function(query, eventRegist
   this.eventQueue_.raiseEventsAtPath(query.path, events);
 };
 fb.core.Repo.prototype.interrupt = function() {
-  this.connection_.interrupt();
+  if (this.persistentConnection_) {
+    this.persistentConnection_.interrupt();
+  }
 };
 fb.core.Repo.prototype.resume = function() {
-  this.connection_.resume();
+  if (this.persistentConnection_) {
+    this.persistentConnection_.resume();
+  }
 };
 fb.core.Repo.prototype.stats = function(showDelta) {
   if (typeof console === "undefined") {
@@ -11652,7 +11908,11 @@ fb.core.Repo.prototype.statsIncrementCounter = function(metric) {
   this.statsReporter_.includeStat(metric);
 };
 fb.core.Repo.prototype.log_ = function(var_args) {
-  fb.core.util.log("r:" + this.connection_.id + ":", arguments);
+  var prefix = "";
+  if (this.persistentConnection_) {
+    prefix = this.persistentConnection_.id + ":";
+  }
+  fb.core.util.log(prefix, arguments);
 };
 fb.core.Repo.prototype.callOnCompleteCallback = function(callback, status, errorReason) {
   if (callback) {
@@ -11704,7 +11964,7 @@ fb.core.Repo.prototype.startTransaction = function(path, transactionUpdate, onCo
       transaction.onComplete(null, false, snapshot);
     }
   } else {
-    fb.core.util.validation.validateFirebaseData("transaction failed: Data returned ", newVal);
+    fb.core.util.validation.validateFirebaseData("transaction failed: Data returned ", newVal, transaction.path);
     transaction.status = fb.core.TransactionStatus.RUN;
     var queueNode = this.transactionQueueTree_.subTree(path);
     var nodeQueue = queueNode.getValue() || [];
@@ -11774,7 +12034,7 @@ fb.core.Repo.prototype.sendTransactionQueue_ = function(path, queue) {
   var dataToSend = snapToSend.val(true);
   var pathToSend = path;
   var self = this;
-  this.connection_.put(pathToSend.toString(), dataToSend, function(status) {
+  this.server_.put(pathToSend.toString(), dataToSend, function(status) {
     self.log_("transaction put response", {path:pathToSend.toString(), status:status});
     var events = [];
     if (status === "ok") {
@@ -11852,7 +12112,7 @@ fb.core.Repo.prototype.rerunTransactionQueue_ = function(queue, path) {
           transaction.currentInputSnapshot = currentNode;
           var newData = queue[i].update(currentNode.val());
           if (goog.isDef(newData)) {
-            fb.core.util.validation.validateFirebaseData("transaction failed: Data returned ", newData);
+            fb.core.util.validation.validateFirebaseData("transaction failed: Data returned ", newData, transaction.path);
             var newDataNode = fb.core.snap.NodeFromJSON(newData);
             var hasExplicitPriority = typeof newData === "object" && newData != null && fb.util.obj.contains(newData, ".priority");
             if (!hasExplicitPriority) {
@@ -12002,6 +12262,7 @@ goog.require("fb.core.Repo_transaction");
 goog.require("fb.util.obj");
 fb.core.RepoManager = function() {
   this.repos_ = {};
+  this.useRestClient_ = false;
 };
 goog.addSingletonGetter(fb.core.RepoManager);
 fb.core.RepoManager.prototype.interrupt = function() {
@@ -12020,10 +12281,13 @@ fb.core.RepoManager.prototype.getRepo = function(repoInfo) {
   var repoHashString = repoInfo.toString();
   var repo = fb.util.obj.get(this.repos_, repoHashString);
   if (!repo) {
-    repo = new fb.core.Repo(repoInfo);
+    repo = new fb.core.Repo(repoInfo, this.useRestClient_);
     this.repos_[repoHashString] = repo;
   }
   return repo;
+};
+fb.core.RepoManager.prototype.forceRestClient = function() {
+  this.useRestClient_ = true;
 };
 goog.provide("fb.api.OnDisconnect");
 goog.require("fb.constants");
@@ -12050,7 +12314,7 @@ goog.exportProperty(fb.api.OnDisconnect.prototype, "remove", fb.api.OnDisconnect
 fb.api.OnDisconnect.prototype.set = function(value, opt_onComplete) {
   fb.util.validation.validateArgCount("Firebase.onDisconnect().set", 1, 2, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.onDisconnect().set", this.path_);
-  fb.core.util.validation.validateFirebaseDataArg("Firebase.onDisconnect().set", 1, value, false);
+  fb.core.util.validation.validateFirebaseDataArg("Firebase.onDisconnect().set", 1, value, this.path_, false);
   fb.util.validation.validateCallback("Firebase.onDisconnect().set", 2, opt_onComplete, true);
   this.repo_.onDisconnectSet(this.path_, value, opt_onComplete);
 };
@@ -12058,7 +12322,7 @@ goog.exportProperty(fb.api.OnDisconnect.prototype, "set", fb.api.OnDisconnect.pr
 fb.api.OnDisconnect.prototype.setWithPriority = function(value, priority, opt_onComplete) {
   fb.util.validation.validateArgCount("Firebase.onDisconnect().setWithPriority", 2, 3, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.onDisconnect().setWithPriority", this.path_);
-  fb.core.util.validation.validateFirebaseDataArg("Firebase.onDisconnect().setWithPriority", 1, value, false);
+  fb.core.util.validation.validateFirebaseDataArg("Firebase.onDisconnect().setWithPriority", 1, value, this.path_, false);
   fb.core.util.validation.validatePriority("Firebase.onDisconnect().setWithPriority", 2, priority, false);
   fb.util.validation.validateCallback("Firebase.onDisconnect().setWithPriority", 3, opt_onComplete, true);
   this.repo_.onDisconnectSetWithPriority(this.path_, value, priority, opt_onComplete);
@@ -12075,7 +12339,7 @@ fb.api.OnDisconnect.prototype.update = function(objectToMerge, opt_onComplete) {
     objectToMerge = newObjectToMerge;
     fb.core.util.warn("Passing an Array to Firebase.onDisconnect().update() is deprecated. Use set() if you want to overwrite the " + "existing data, or an Object with integer keys if you really do want to only update some of the children.");
   }
-  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.onDisconnect().update", 1, objectToMerge, false);
+  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.onDisconnect().update", 1, objectToMerge, this.path_, false);
   fb.util.validation.validateCallback("Firebase.onDisconnect().update", 2, opt_onComplete, true);
   this.repo_.onDisconnectUpdate(this.path_, objectToMerge, opt_onComplete);
 };
@@ -12307,7 +12571,7 @@ fb.api.Query.prototype.orderByValue = function() {
 goog.exportProperty(fb.api.Query.prototype, "orderByValue", fb.api.Query.prototype.orderByValue);
 fb.api.Query.prototype.startAt = function(value, name) {
   fb.util.validation.validateArgCount("Query.startAt", 0, 2, arguments.length);
-  fb.core.util.validation.validateFirebaseDataArg("Query.startAt", 1, value, true);
+  fb.core.util.validation.validateFirebaseDataArg("Query.startAt", 1, value, this.path, true);
   fb.core.util.validation.validateKey("Query.startAt", 2, name, true);
   var newParams = this.queryParams_.startAt(value, name);
   this.validateLimit_(newParams);
@@ -12324,7 +12588,7 @@ fb.api.Query.prototype.startAt = function(value, name) {
 goog.exportProperty(fb.api.Query.prototype, "startAt", fb.api.Query.prototype.startAt);
 fb.api.Query.prototype.endAt = function(value, name) {
   fb.util.validation.validateArgCount("Query.endAt", 0, 2, arguments.length);
-  fb.core.util.validation.validateFirebaseDataArg("Query.endAt", 1, value, true);
+  fb.core.util.validation.validateFirebaseDataArg("Query.endAt", 1, value, this.path, true);
   fb.core.util.validation.validateKey("Query.endAt", 2, name, true);
   var newParams = this.queryParams_.endAt(value, name);
   this.validateLimit_(newParams);
@@ -12337,7 +12601,7 @@ fb.api.Query.prototype.endAt = function(value, name) {
 goog.exportProperty(fb.api.Query.prototype, "endAt", fb.api.Query.prototype.endAt);
 fb.api.Query.prototype.equalTo = function(value, name) {
   fb.util.validation.validateArgCount("Query.equalTo", 1, 2, arguments.length);
-  fb.core.util.validation.validateFirebaseDataArg("Query.equalTo", 1, value, false);
+  fb.core.util.validation.validateFirebaseDataArg("Query.equalTo", 1, value, this.path, false);
   fb.core.util.validation.validateKey("Query.equalTo", 2, name, true);
   if (this.queryParams_.hasStart()) {
     throw new Error("Query.equalTo: Starting point was already set (by another call to endAt or " + "equalTo).");
@@ -12348,6 +12612,14 @@ fb.api.Query.prototype.equalTo = function(value, name) {
   return this.startAt(value, name).endAt(value, name);
 };
 goog.exportProperty(fb.api.Query.prototype, "equalTo", fb.api.Query.prototype.equalTo);
+fb.api.Query.prototype.toString = function() {
+  fb.util.validation.validateArgCount("Query.toString", 0, 0, arguments.length);
+  var url = this.repo.toString() + this.path.toUrlEncodedString();
+  var querystring = fb.util.querystring(this.queryParams_.toRestQueryStringParameters());
+  url += querystring.replace(/^&/, "");
+  return url;
+};
+goog.exportProperty(fb.api.Query.prototype, "toString", fb.api.Query.prototype.toString);
 fb.api.Query.prototype.queryObject = function() {
   return this.queryParams_.getQueryObject();
 };
@@ -12415,9 +12687,13 @@ fb.api.TEST_ACCESS.queryIdentifier = function(query) {
 };
 goog.exportProperty(fb.api.TEST_ACCESS, "queryIdentifier", fb.api.TEST_ACCESS.queryIdentifier);
 fb.api.TEST_ACCESS.listens = function(firebaseRef) {
-  return firebaseRef.repo.connection_.listens_;
+  return firebaseRef.repo.persistentConnection_.listens_;
 };
 goog.exportProperty(fb.api.TEST_ACCESS, "listens", fb.api.TEST_ACCESS.listens);
+fb.api.TEST_ACCESS.forceRestClient = function(repoManager) {
+  repoManager.forceRestClient();
+};
+goog.exportProperty(fb.api.TEST_ACCESS, "forceRestClient", fb.api.TEST_ACCESS.forceRestClient);
 goog.provide("Firebase");
 goog.require("fb.api.INTERNAL");
 goog.require("fb.api.OnDisconnect");
@@ -12504,18 +12780,10 @@ Firebase.prototype.root = function() {
   }
   return ref;
 };
-Firebase.prototype.toString = function() {
-  fb.util.validation.validateArgCount("Firebase.toString", 0, 0, arguments.length);
-  if (this.parent() === null) {
-    return this.repo.toString();
-  } else {
-    return this.parent().toString() + "/" + goog.string.urlEncode(this.key());
-  }
-};
 Firebase.prototype.set = function(newVal, onComplete) {
   fb.util.validation.validateArgCount("Firebase.set", 1, 2, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.set", this.path);
-  fb.core.util.validation.validateFirebaseDataArg("Firebase.set", 1, newVal, false);
+  fb.core.util.validation.validateFirebaseDataArg("Firebase.set", 1, newVal, this.path, false);
   fb.util.validation.validateCallback("Firebase.set", 2, onComplete, true);
   this.repo.setWithPriority(this.path, newVal, null, onComplete || null);
 };
@@ -12530,14 +12798,14 @@ Firebase.prototype.update = function(objectToMerge, onComplete) {
     objectToMerge = newObjectToMerge;
     fb.core.util.warn("Passing an Array to Firebase.update() is deprecated. Use set() if you want to overwrite the existing data, or " + "an Object with integer keys if you really do want to only update some of the children.");
   }
-  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.update", 1, objectToMerge, false);
+  fb.core.util.validation.validateFirebaseMergeDataArg("Firebase.update", 1, objectToMerge, this.path, false);
   fb.util.validation.validateCallback("Firebase.update", 2, onComplete, true);
   this.repo.update(this.path, objectToMerge, onComplete || null);
 };
 Firebase.prototype.setWithPriority = function(newVal, newPriority, onComplete) {
   fb.util.validation.validateArgCount("Firebase.setWithPriority", 2, 3, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.setWithPriority", this.path);
-  fb.core.util.validation.validateFirebaseDataArg("Firebase.setWithPriority", 1, newVal, false);
+  fb.core.util.validation.validateFirebaseDataArg("Firebase.setWithPriority", 1, newVal, this.path, false);
   fb.core.util.validation.validatePriority("Firebase.setWithPriority", 2, newPriority, false);
   fb.util.validation.validateCallback("Firebase.setWithPriority", 3, onComplete, true);
   if (this.key() === ".length" || this.key() === ".keys") {
@@ -12575,7 +12843,7 @@ Firebase.prototype.setPriority = function(priority, opt_onComplete) {
 Firebase.prototype.push = function(value, onComplete) {
   fb.util.validation.validateArgCount("Firebase.push", 0, 2, arguments.length);
   fb.core.util.validation.validateWritablePath("Firebase.push", this.path);
-  fb.core.util.validation.validateFirebaseDataArg("Firebase.push", 1, value, true);
+  fb.core.util.validation.validateFirebaseDataArg("Firebase.push", 1, value, this.path, true);
   fb.util.validation.validateCallback("Firebase.push", 2, onComplete, true);
   var now = this.repo.serverTime();
   var name = fb.core.util.nextPushId(now);
@@ -12750,5 +13018,5 @@ Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
 
-Firebase.SDK_VERSION = '2.2.1';
+Firebase.SDK_VERSION = '2.2.2';
 
