@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.2
+/*! @license Firebase v2.2.3
     License: https://www.firebase.com/terms/terms-of-service.html */
 var CLOSURE_NO_DEPS = true;
 var COMPILED = false;
@@ -9573,7 +9573,7 @@ fb.login.transports.JSONP.prototype.writeScriptTag_ = function(id, url, cb) {
   }, 0);
 };
 fb.login.transports.JSONP["isAvailable"] = function() {
-  return!NODE_CLIENT && !fb.login.util.environment.isMobileCordova();
+  return!NODE_CLIENT;
 };
 fb.login.transports.JSONP.prototype.classification = function() {
   return "json";
@@ -13018,5 +13018,5 @@ Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
 
-Firebase.SDK_VERSION = '2.2.2';
+Firebase.SDK_VERSION = '2.2.3';
 
