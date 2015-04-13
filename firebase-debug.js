@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.3
+/*! @license Firebase v2.2.4
     License: https://www.firebase.com/terms/terms-of-service.html */
 var CLOSURE_NO_DEPS = true;
 var COMPILED = false;
@@ -8493,20 +8493,22 @@ fb.core.util.OnlineMonitor = goog.defineClass(fb.core.util.EventEmitter, {constr
     var self = this;
     window.addEventListener("online", function() {
       if (!self.online_) {
+        self.online_ = true;
         self.trigger("online", true);
       }
-      self.online_ = true;
     }, false);
     window.addEventListener("offline", function() {
       if (self.online_) {
+        self.online_ = false;
         self.trigger("online", false);
       }
-      self.online_ = false;
     }, false);
   }
 }, getInitialEvent:function(eventType) {
   fb.core.util.assert(eventType === "online", "Unknown event type: " + eventType);
   return[this.online_];
+}, currentlyOnline:function() {
+  return this.online_;
 }});
 goog.addSingletonGetter(fb.core.util.OnlineMonitor);
 goog.provide("fb.core.util.VisibilityMonitor");
@@ -8935,27 +8937,30 @@ fb.login.util.environment.isMobileWrapper = function() {
   return fb.login.util.environment.isMobileCordova() || fb.login.util.environment.isMobileWindows() || fb.login.util.environment.isIosWebview();
 };
 fb.login.util.environment.isMobileCordova = function() {
-  return!!(window["cordova"] || window["phonegap"] || window["PhoneGap"]) && /ios|iphone|ipod|ipad|android|blackberry|iemobile/i.test(navigator["userAgent"]);
+  return typeof window !== "undefined" && !!(window["cordova"] || window["phonegap"] || window["PhoneGap"]) && /ios|iphone|ipod|ipad|android|blackberry|iemobile/i.test(navigator["userAgent"]);
 };
 fb.login.util.environment.isMobileWindows = function() {
-  return!!navigator["userAgent"].match(/Windows Phone/) || !!window["Windows"] && /^ms-appx:/.test(location.href);
+  return typeof navigator !== "undefined" && (!!navigator["userAgent"].match(/Windows Phone/) || !!window["Windows"] && /^ms-appx:/.test(location.href));
 };
 fb.login.util.environment.isMobileFirefox = function() {
-  return navigator["userAgent"].indexOf("Fennec/") !== -1 || navigator["userAgent"].indexOf("Firefox/") !== -1 && navigator["userAgent"].indexOf("Android") !== -1;
+  return typeof navigator !== "undefined" && (navigator["userAgent"].indexOf("Fennec/") !== -1 || navigator["userAgent"].indexOf("Firefox/") !== -1 && navigator["userAgent"].indexOf("Android") !== -1);
 };
 fb.login.util.environment.isIosWebview = function() {
-  return!!(navigator["userAgent"].match(/(iPhone|iPod|iPad).*AppleWebKit(?!.*Safari)/i) || navigator["userAgent"].match(/CriOS/) || navigator["userAgent"].match(/Twitter for iPhone/) || navigator["userAgent"].match(/FBAN\/FBIOS/) || window["navigator"]["standalone"]);
+  return typeof navigator !== "undefined" && typeof window !== "undefined" && !!(navigator["userAgent"].match(/(iPhone|iPod|iPad).*AppleWebKit(?!.*Safari)/i) || navigator["userAgent"].match(/CriOS/) || navigator["userAgent"].match(/Twitter for iPhone/) || navigator["userAgent"].match(/FBAN\/FBIOS/) || window["navigator"]["standalone"]);
 };
 fb.login.util.environment.isHeadlessBrowser = function() {
-  return!!navigator["userAgent"].match(/PhantomJS/);
+  return typeof navigator !== "undefined" && !!navigator["userAgent"].match(/PhantomJS/);
 };
 fb.login.util.environment.isLocalFile = function() {
-  return/^file:\//.test(location.href);
+  return typeof location !== "undefined" && /^file:\//.test(location.href);
 };
 fb.login.util.environment.isIE = function() {
-  return!!(navigator["userAgent"].match(/MSIE/) || navigator["userAgent"].match(/Trident/));
+  return typeof navigator !== "undefined" && !!(navigator["userAgent"].match(/MSIE/) || navigator["userAgent"].match(/Trident/));
 };
 fb.login.util.environment.isModernIE = function() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
   var ua = navigator["userAgent"], match;
   if (navigator["appName"] === "Microsoft Internet Explorer") {
     match = ua.match(/MSIE ([0-9]{1,}[\.0-9]{0,})/);
@@ -9601,6 +9606,7 @@ fb.login.AuthenticationManager = function(repoInfo, auth, unauth, onAuthStatus) 
   this.onAuthStatus_ = onAuthStatus;
   this.sessionManager_ = new fb.login.SessionManager(repoInfo, [fb.core.storage.PersistentStorage, fb.core.storage.SessionStorage]);
   this.authData_ = null;
+  this.redirectRestart_ = false;
   this.resumeSession();
 };
 goog.inherits(fb.login.AuthenticationManager, fb.core.util.EventEmitter);
@@ -9758,8 +9764,11 @@ fb.login.AuthenticationManager.prototype.finishOAuthRedirectLogin_ = function() 
     fb.core.storage.SessionStorage.remove(fb.login.Constants.REDIR_REQUEST_ID_KEY);
     fb.core.storage.SessionStorage.remove(fb.login.Constants.REDIR_CLIENT_OPTIONS_KEY);
     var transports = [fb.login.transports.XHR, fb.login.transports.JSONP], serverParams = {"requestId":redirectRequestId, "requestKey":fb.login.transports.util.extractRedirectCompletionHash(document.location.hash)}, transportOptions = {}, requestInfo = new fb.login.RequestInfo(clientOptions, transportOptions, serverParams);
+    this.redirectRestart_ = true;
     fb.login.transports.util.replaceRedirectCompletionHash();
-    this.authWithTransports_(transports, "/auth/session", requestInfo);
+    this.authWithTransports_(transports, "/auth/session", requestInfo, function(error) {
+      this.redirectRestart_ = false;
+    }.bind(this));
   }
 };
 fb.login.AuthenticationManager.prototype.createUser = function(params, opt_onComplete) {
@@ -9888,6 +9897,9 @@ fb.login.AuthenticationManager.prototype.updateAuthStatus_ = function(authData) 
 };
 fb.login.AuthenticationManager.prototype.getInitialEvent = function(event) {
   fb.core.util.assert(event === "auth_status", 'initial event must be of type "auth_status"');
+  if (this.redirectRestart_) {
+    return null;
+  }
   return[this.authData_];
 };
 fb.login.AuthenticationManager.prototype.versionString = function() {
@@ -10969,10 +10981,11 @@ fb.realtime.Connection.prototype.closeConnections_ = function() {
   }
 };
 goog.provide("fb.core.PersistentConnection");
+goog.require("fb.core.ServerActions");
 goog.require("fb.core.util");
 goog.require("fb.core.util.OnlineMonitor");
 goog.require("fb.core.util.VisibilityMonitor");
-goog.require("fb.core.ServerActions");
+goog.require("fb.login.util.environment");
 goog.require("fb.realtime.Connection");
 goog.require("fb.util.json");
 goog.require("fb.util.jwt");
@@ -10984,7 +10997,8 @@ var RECONNECT_DELAY_RESET_TIMEOUT = 3E4;
 fb.core.PersistentConnection = function(repoInfo, onDataUpdate, onConnectStatus, onServerInfoUpdate) {
   this.id = fb.core.PersistentConnection.nextPersistentConnectionId_++;
   this.log_ = fb.core.util.logWrapper("p:" + this.id + ":");
-  this.shouldReconnect_ = true;
+  this.interrupted_ = false;
+  this.killed_ = false;
   this.listens_ = {};
   this.outstandingPuts_ = [];
   this.outstandingPutCount_ = 0;
@@ -10999,6 +11013,7 @@ fb.core.PersistentConnection = function(repoInfo, onDataUpdate, onConnectStatus,
   this.securityDebugCallback_ = null;
   this.requestCBHash_ = {};
   this.requestNumber_ = 0;
+  this.firstConnection_ = true;
   this.lastConnectionAttemptTime_ = null;
   this.lastConnectionEstablishedTime_ = null;
   this.scheduleConnect_(0);
@@ -11212,7 +11227,13 @@ fb.core.PersistentConnection.prototype.reportStats = function(stats) {
   if (this.connected_) {
     var request = {"c":stats};
     this.log_("reportStats", request);
-    this.sendRequest("s", request);
+    this.sendRequest("s", request, function(result) {
+      var status = result["s"];
+      if (status !== "ok") {
+        var errorReason = result["d"];
+        this.log_("reportStats", "Error sending stats: " + errorReason);
+      }
+    });
   }
 };
 fb.core.PersistentConnection.prototype.onDataMessage_ = function(message) {
@@ -11263,7 +11284,11 @@ fb.core.PersistentConnection.prototype.onReady_ = function(timestamp) {
   this.connected_ = true;
   this.lastConnectionEstablishedTime_ = (new Date).getTime();
   this.handleTimestamp_(timestamp);
+  if (this.firstConnection_) {
+    this.sendConnectStats_();
+  }
   this.restoreState_();
+  this.firstConnection_ = false;
   this.onConnectStatus_(true);
 };
 fb.core.PersistentConnection.prototype.scheduleConnect_ = function(timeout) {
@@ -11289,15 +11314,13 @@ fb.core.PersistentConnection.prototype.onVisible_ = function(visible) {
 };
 fb.core.PersistentConnection.prototype.onOnline_ = function(online) {
   if (online) {
-    this.log_("Browser went online.  Reconnecting.");
+    this.log_("Browser went online.");
     this.reconnectDelay_ = RECONNECT_MIN_DELAY;
-    this.shouldReconnect_ = true;
     if (!this.realtime_) {
       this.scheduleConnect_(0);
     }
   } else {
-    this.log_("Browser went offline.  Killing connection; don't reconnect.");
-    this.shouldReconnect_ = false;
+    this.log_("Browser went offline.  Killing connection.");
     if (this.realtime_) {
       this.realtime_.close();
     }
@@ -11308,11 +11331,8 @@ fb.core.PersistentConnection.prototype.onRealtimeDisconnect_ = function() {
   this.connected_ = false;
   this.realtime_ = null;
   this.cancelSentTransactions_();
-  if (!this.shouldReconnect_) {
-    for (var cbInd in this.requestCBHash_) {
-      delete this.requestCBHash_[cbInd];
-    }
-  } else {
+  this.requestCBHash_ = {};
+  if (this.shouldReconnect_()) {
     if (!this.visible_) {
       this.log_("Window isn't visible.  Delaying reconnect.");
       this.reconnectDelay_ = this.maxReconnectDelay_;
@@ -11336,7 +11356,7 @@ fb.core.PersistentConnection.prototype.onRealtimeDisconnect_ = function() {
   this.onConnectStatus_(false);
 };
 fb.core.PersistentConnection.prototype.establishConnection_ = function() {
-  if (this.shouldReconnect_) {
+  if (this.shouldReconnect_()) {
     this.log_("Making a connection attempt");
     this.lastConnectionAttemptTime_ = (new Date).getTime();
     this.lastConnectionEstablishedTime_ = null;
@@ -11347,12 +11367,12 @@ fb.core.PersistentConnection.prototype.establishConnection_ = function() {
     var self = this;
     this.realtime_ = new fb.realtime.Connection(connId, this.repoInfo_, onDataMessage, onReady, onDisconnect, function(reason) {
       fb.core.util.warn(reason + " (" + self.repoInfo_.toString() + ")");
-      self.shouldReconnect_ = false;
+      self.killed_ = true;
     });
   }
 };
 fb.core.PersistentConnection.prototype.interrupt = function() {
-  this.shouldReconnect_ = false;
+  this.interrupted_ = true;
   if (this.realtime_) {
     this.realtime_.close();
   } else {
@@ -11366,7 +11386,7 @@ fb.core.PersistentConnection.prototype.interrupt = function() {
   }
 };
 fb.core.PersistentConnection.prototype.resume = function() {
-  this.shouldReconnect_ = true;
+  this.interrupted_ = false;
   this.reconnectDelay_ = RECONNECT_MIN_DELAY;
   if (!this.realtime_) {
     this.scheduleConnect_(0);
@@ -11452,6 +11472,18 @@ fb.core.PersistentConnection.prototype.restoreState_ = function() {
     var request = this.onDisconnectRequestQueue_.shift();
     this.sendOnDisconnect_(request.action, request.pathString, request.data, request.onComplete);
   }
+};
+fb.core.PersistentConnection.prototype.sendConnectStats_ = function() {
+  var stats = {};
+  stats["sdk.js." + CLIENT_VERSION.replace(/\./g, "-")] = 1;
+  if (fb.login.util.environment.isMobileCordova()) {
+    stats["framework.cordova"] = 1;
+  }
+  this.reportStats(stats);
+};
+fb.core.PersistentConnection.prototype.shouldReconnect_ = function() {
+  var online = fb.core.util.OnlineMonitor.getInstance().currentlyOnline();
+  return!this.killed_ && !this.interrupted_ && online;
 };
 goog.provide("fb.api.INTERNAL");
 goog.require("fb.core.PersistentConnection");
@@ -11846,10 +11878,6 @@ fb.core.Repo.prototype.onDisconnectUpdate = function(path, childrenToMerge, onCo
     }
     self.callOnCompleteCallback(onComplete, status, errorReason);
   });
-};
-fb.core.Repo.prototype.logOnDisconnectDeprecatedSignature = function() {
-  this.stats_.incrementCounter("deprecated_on_disconnect");
-  this.statsReporter_.includeStat("deprecated_on_disconnect");
 };
 fb.core.Repo.prototype.addEventCallbackForQuery = function(query, eventRegistration) {
   var events;
@@ -13018,5 +13046,5 @@ Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
 
-Firebase.SDK_VERSION = '2.2.3';
+Firebase.SDK_VERSION = '2.2.4';
 
