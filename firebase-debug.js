@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.4
+/*! @license Firebase v2.2.5
     License: https://www.firebase.com/terms/terms-of-service.html */
 var CLOSURE_NO_DEPS = true;
 var COMPILED = false;
@@ -5999,7 +5999,7 @@ fb.core.view.QueryParams = function() {
   this.index_ = fb.core.snap.PriorityIndex;
 };
 fb.core.view.QueryParams.WIRE_PROTOCOL_CONSTANTS_ = {INDEX_START_VALUE:"sp", INDEX_START_NAME:"sn", INDEX_END_VALUE:"ep", INDEX_END_NAME:"en", LIMIT:"l", VIEW_FROM:"vf", VIEW_FROM_LEFT:"l", VIEW_FROM_RIGHT:"r", INDEX:"i"};
-fb.core.view.QueryParams.REST_QUERY_CONSTANTS_ = {ORDER_BY:"orderBy", PRIORITY_INDEX:"$priority", VALUE_INDEX:"$value", START_AT:"startAt", END_AT:"endAt", LIMIT_TO_FIRST:"limitToFirst", LIMIT_TO_LAST:"limitToLast"};
+fb.core.view.QueryParams.REST_QUERY_CONSTANTS_ = {ORDER_BY:"orderBy", PRIORITY_INDEX:"$priority", VALUE_INDEX:"$value", KEY_INDEX:"$key", START_AT:"startAt", END_AT:"endAt", LIMIT_TO_FIRST:"limitToFirst", LIMIT_TO_LAST:"limitToLast"};
 fb.core.view.QueryParams.DEFAULT = new fb.core.view.QueryParams;
 fb.core.view.QueryParams.prototype.hasStart = function() {
   return this.startSet_;
@@ -6186,8 +6186,12 @@ fb.core.view.QueryParams.prototype.toRestQueryStringParameters = function() {
     if (this.index_ === fb.core.snap.ValueIndex) {
       orderBy = REST_CONSTANTS.VALUE_INDEX;
     } else {
-      fb.core.util.assert(this.index_ instanceof fb.core.snap.SubKeyIndex, "Unrecognized index type!");
-      orderBy = this.index_.toString();
+      if (this.index_ === fb.core.snap.KeyIndex) {
+        orderBy = REST_CONSTANTS.KEY_INDEX;
+      } else {
+        fb.core.util.assert(this.index_ instanceof fb.core.snap.SubKeyIndex, "Unrecognized index type!");
+        orderBy = this.index_.toString();
+      }
     }
   }
   qs[REST_CONSTANTS.ORDER_BY] = fb.util.json.stringify(orderBy);
@@ -10093,7 +10097,7 @@ fb.realtime.BrowserPollConnection.forceDisallow = function() {
   fb.realtime.BrowserPollConnection.forceDisallow_ = true;
 };
 fb.realtime.BrowserPollConnection["isAvailable"] = function() {
-  return!fb.realtime.BrowserPollConnection.forceDisallow_ && !fb.core.util.isChromeExtensionContentScript() && !fb.core.util.isWindowsStoreApp() && (fb.realtime.BrowserPollConnection.forceAllow_ || !NODE_CLIENT);
+  return fb.realtime.BrowserPollConnection.forceAllow_ || !fb.realtime.BrowserPollConnection.forceDisallow_ && typeof document !== "undefined" && !fb.core.util.isChromeExtensionContentScript() && !fb.core.util.isWindowsStoreApp();
 };
 fb.realtime.BrowserPollConnection.prototype.markConnectionHealthy = function() {
 };
@@ -12642,10 +12646,7 @@ fb.api.Query.prototype.equalTo = function(value, name) {
 goog.exportProperty(fb.api.Query.prototype, "equalTo", fb.api.Query.prototype.equalTo);
 fb.api.Query.prototype.toString = function() {
   fb.util.validation.validateArgCount("Query.toString", 0, 0, arguments.length);
-  var url = this.repo.toString() + this.path.toUrlEncodedString();
-  var querystring = fb.util.querystring(this.queryParams_.toRestQueryStringParameters());
-  url += querystring.replace(/^&/, "");
-  return url;
+  return this.repo.toString() + this.path.toUrlEncodedString();
 };
 goog.exportProperty(fb.api.Query.prototype, "toString", fb.api.Query.prototype.toString);
 fb.api.Query.prototype.queryObject = function() {
@@ -13046,5 +13047,5 @@ Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
 
-Firebase.SDK_VERSION = '2.2.4';
+Firebase.SDK_VERSION = '2.2.5';
 
