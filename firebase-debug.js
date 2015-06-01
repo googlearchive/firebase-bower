@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.5
+/*! @license Firebase v2.2.6
     License: https://www.firebase.com/terms/terms-of-service.html */
 var CLOSURE_NO_DEPS = true;
 var COMPILED = false;
@@ -9432,7 +9432,7 @@ fb.login.transports.XHR.prototype.open = function(url, params, cb) {
   xhr.send(payload);
 };
 fb.login.transports.XHR["isAvailable"] = function() {
-  return!NODE_CLIENT && !!window["XMLHttpRequest"] && typeof(new XMLHttpRequest).responseType === "string" && (!fb.login.util.environment.isIE() || fb.login.util.environment.isModernIE());
+  return!NODE_CLIENT && !!window["XMLHttpRequest"] && (!fb.login.util.environment.isIE() || fb.login.util.environment.isModernIE());
 };
 fb.login.transports.XHR.prototype.classification = function() {
   return "json";
@@ -13047,5 +13047,5 @@ Firebase.INTERNAL = fb.api.INTERNAL;
 Firebase.Context = fb.core.RepoManager;
 Firebase.TEST_ACCESS = fb.api.TEST_ACCESS;
 
-Firebase.SDK_VERSION = '2.2.5';
+Firebase.SDK_VERSION = '2.2.6';
 
