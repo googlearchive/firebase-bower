@@ -1,4 +1,4 @@
-/*! @license Firebase v2.2.8
+/*! @license Firebase v2.2.9
     License: https://www.firebase.com/terms/terms-of-service.html */
 (function(ns) {
   ns.wrapper = function(goog, fb) {
@@ -6,7 +6,7 @@
     var CLOSURE_NO_DEPS = true;
 
     // Sets CLIENT_VERSION manually, since we can't use a closure --define with WHITESPACE_ONLY compilation.
-    var CLIENT_VERSION = '2.2.8';
+    var CLIENT_VERSION = '2.2.9';
     var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
@@ -3150,10 +3150,9 @@ goog.crypt.base64.init_ = function() {
   }
 };
 goog.provide("fb.constants");
-var NODE_CLIENT_DEFINE = false;
+var NODE_CLIENT = false;
 var CLIENT_VERSION_DEFINE = "0.0.0";
 var CLIENT_VERSION = CLIENT_VERSION || CLIENT_VERSION_DEFINE;
-var NODE_CLIENT = NODE_CLIENT || NODE_CLIENT_DEFINE;
 goog.provide("fb.util.obj");
 fb.util.obj.contains = function(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
