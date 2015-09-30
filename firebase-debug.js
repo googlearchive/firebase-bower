@@ -1,4 +1,4 @@
-/*! @license Firebase v2.3.0
+/*! @license Firebase v2.3.1
     License: https://www.firebase.com/terms/terms-of-service.html */
 (function(ns) {
   ns.wrapper = function(goog, fb) {
@@ -6,7 +6,7 @@
     var CLOSURE_NO_DEPS = true;
 
     // Sets CLIENT_VERSION manually, since we can't use a closure --define with WHITESPACE_ONLY compilation.
-    var CLIENT_VERSION = '2.3.0';
+    var CLIENT_VERSION = '2.3.1';
     var COMPILED = false;
 var goog = goog || {};
 goog.global = this;
@@ -4257,9 +4257,9 @@ fb.core.RepoInfo.prototype.connectionURL = function(type, params) {
     params["ns"] = this.namespace;
   }
   var pairs = [];
-  goog.object.forEach(params, function(pairs, element, index, obj) {
+  goog.object.forEach(params, function(element, index, obj) {
     pairs.push(index + "=" + element);
-  }.bind(this, pairs));
+  });
   return connURL + pairs.join("&");
 };
 fb.core.RepoInfo.prototype.toString = function() {
