@@ -5532,7 +5532,7 @@ fb.core.util.isChromeExtensionContentScript = function() {
 fb.core.util.isWindowsStoreApp = function() {
   return typeof Windows === "object" && typeof Windows.UI === "object";
 };
-fb.core.util.errorForServerCode = function(code) {
+fb.core.util.errorForServerCode = function(code, query) {
   var reason = "Unknown Error";
   if (code === "too_big") {
     reason = "The data requested exceeds the maximum size " + "that can be accessed with a single request.";
@@ -5545,7 +5545,12 @@ fb.core.util.errorForServerCode = function(code) {
       }
     }
   }
-  var error = new Error(code + ": " + reason);
+  var message = code + ": " + reason;
+  if (query) {
+    message += " " + query;
+  }
+  var error = new Error(message);
+  error.query = query;
   error.code = code.toUpperCase();
   return error;
 };
@@ -12531,7 +12536,7 @@ fb.core.SyncTree.prototype.createListenerForView_ = function(view) {
         return self.applyListenComplete(query.path);
       }
     } else {
-      var error = fb.core.util.errorForServerCode(status);
+      var error = fb.core.util.errorForServerCode(status, query);
       return self.removeEventRegistration(query, null, error);
     }
   }};
