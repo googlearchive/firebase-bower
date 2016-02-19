@@ -10082,6 +10082,9 @@ fb.login.AuthenticationManager.prototype.authWithPopup = function(provider, opt_
     }, 0);
     return;
   }
+  if (provider === "github") {
+    width = 1025;
+  }
   requestInfo.transportOptions["window_features"] = "" + "menubar=yes," + "modal=yes," + "alwaysRaised=yes" + "location=yes," + "resizable=yes," + "scrollbars=yes," + "status=yes," + "height=" + height + "," + "width=" + width + "," + "top=" + (typeof screen === "object" ? (screen["height"] - height) * .5 : 0) + "," + "left=" + (typeof screen === "object" ? (screen["width"] - width) * .5 : 0);
   requestInfo.transportOptions["relay_url"] = fb.login.transports.util.getPopupChannelUrl(this.repoInfo_.namespace);
   requestInfo.transportOptions["requestWithCredential"] = goog.bind(this.requestWithCredential, this);
