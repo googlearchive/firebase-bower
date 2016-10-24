@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.5.1
+ * Version: 3.5.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *

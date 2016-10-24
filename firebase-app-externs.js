@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.5.1
+ * Version: 3.5.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -62,7 +62,7 @@ firebase.app = function(name) {};
 firebase.apps;
 
 /**
- * The current SDK version ('3.5.1').
+ * The current SDK version ('3.5.2').
  * @type {string}
  */
 firebase.SDK_VERSION;
