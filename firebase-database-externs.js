@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.5.2
+ * Version: 3.5.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -335,7 +335,7 @@ firebase.database.Reference.prototype.update =
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @param {*} newVal
@@ -471,7 +471,7 @@ firebase.database.Reference.prototype.transaction =
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @param {string|number|null} priority
@@ -560,7 +560,7 @@ firebase.database.Reference.prototype.onDisconnect = function() {};
  *
  * Read our documentation on
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data} for more information.
  *
  * @interface
@@ -806,7 +806,7 @@ firebase.database.Query.prototype.once = function(eventType, successCallback, fa
  *
  * You can read more about `limitToFirst()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -842,7 +842,7 @@ firebase.database.Query.prototype.limitToFirst = function(limit) {};
  *
  * You can read more about `limitToLast()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -875,7 +875,7 @@ firebase.database.Query.prototype.limitToLast = function(limit) {};
  *
  * You can read more about `orderByChild()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -897,7 +897,7 @@ firebase.database.Query.prototype.orderByChild = function(path) {};
  *
  * You can read more about `orderByKey()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -917,7 +917,7 @@ firebase.database.Query.prototype.orderByKey = function() {};
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @return {!firebase.database.Query}
@@ -933,7 +933,7 @@ firebase.database.Query.prototype.orderByPriority = function() {};
  *
  * You can read more about `orderByValue()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -963,7 +963,7 @@ firebase.database.Query.prototype.orderByValue = function() {};
  *
  * You can read more about `startAt()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -998,7 +998,7 @@ firebase.database.Query.prototype.startAt = function(value, key) {};
  *
  * You can read more about `endAt()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -1033,7 +1033,7 @@ firebase.database.Query.prototype.endAt = function(value, key) {};
  *
  * You can read more about `equalTo()` in
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}.
  *
  * @example
@@ -1149,7 +1149,7 @@ firebase.database.DataSnapshot.prototype.val = function() {};
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @return {*}
@@ -1252,7 +1252,7 @@ firebase.database.DataSnapshot.prototype.hasChild = function(path) {};
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @return {string|number|null}
@@ -1534,7 +1534,7 @@ firebase.database.OnDisconnect.prototype.set =
  * Applications need not use priority, but can order collections by
  * ordinary properties (see
  * {@link
- *  https://firebase.google.com/docs/database/web/retrieve-data#sorting_and_filtering_data
+ *  https://firebase.google.com/docs/database/web/lists-of-data#sorting_and_filtering_data
  *  Sorting and filtering data}).
  *
  * @param {*} value

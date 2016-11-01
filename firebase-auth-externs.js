@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Auth API.
- * Version: 3.5.2
+ * Version: 3.5.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -530,6 +530,20 @@ firebase.auth.Auth.prototype.currentUser;
  * <dd>Thrown if the password is not strong enough.</dd>
  * </dl>
  *
+ * @example
+ * firebase.auth().createUserWithEmailAndPassword(email, password)
+ *     .catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *   if (errorCode == 'auth/weak-password') {
+ *     alert('The password is too weak.');
+ *   } else {
+ *     alert(errorMessage);
+ *   }
+ *   console.log(error);
+ * });
+ *
  * @param {string} email The user's email address.
  * @param {string} password The user's chosen password.
  * @return {!firebase.Promise<!firebase.User>}
@@ -556,6 +570,13 @@ firebase.auth.Auth.prototype.fetchProvidersForEmail = function(email) {};
 
 /**
  * Adds an observer for auth state changes.
+ *
+ * @example
+ * firebase.auth().onAuthStateChanged(function(user) {
+ *   if (user) {
+ *     // User is signed in.
+ *   }
+ * });
  *
  * @param {!Object|function(?firebase.User)}
  *     nextOrObserver An observer object or a function triggered on change.
@@ -651,6 +672,23 @@ firebase.auth.Auth.prototype.confirmPasswordReset =
  *     does not have a password set.</dd>
  * </dl>
  *
+ * @example
+ * firebase.auth().signInWithCredential(credential).catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *   // The email of the user's account used.
+ *   var email = error.email;
+ *   // The firebase.auth.AuthCredential type that was used.
+ *   var credential = error.credential;
+ *   if (errorCode === 'auth/account-exists-with-different-credential') {
+ *     alert('Email already associated with another account.');
+ *     // Handle account linking here, if using.
+ *   } else {
+ *     console.error(error);
+ *   }
+ *  });
+ *
  * @param {!firebase.auth.AuthCredential} credential The auth credential.
  * @return {!firebase.Promise<!firebase.User>}
  */
@@ -673,6 +711,18 @@ firebase.auth.Auth.prototype.signInWithCredential = function(credential) {};
  * <dt>auth/invalid-custom-token</dt>
  * <dd>Thrown if the custom token format is incorrect.</dd>
  * </dl>
+ *
+ * @example
+ * firebase.auth().signInWithCustomToken(token).catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *   if (errorCode === 'auth/invalid-custom-token') {
+ *     alert('The token you provided is not valid.');
+ *   } else {
+ *     console.error(error);
+ *   }
+ * });
  *
  * @param {string} token The custom token to sign in with.
  * @return {!firebase.Promise<!firebase.User>}
@@ -705,6 +755,20 @@ firebase.auth.Auth.prototype.signInWithCustomToken = function(token) {};
  *     corresponding to the email does not have a password set.</dd>
  * </dl>
  *
+ * @example
+ * firebase.auth().signInWithEmailAndPassword(email, password)
+ *     .catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *   if (errorCode === 'auth/wrong-password') {
+ *     alert('Wrong password.');
+ *   } else {
+ *     alert(errorMessage);
+ *   }
+ *   console.log(error);
+ * });
+ *
  * @param {string} email The users email address.
  * @param {string} password The users password.
  * @return {!firebase.Promise<!firebase.User>}
@@ -725,6 +789,19 @@ firebase.auth.Auth.prototype.signInWithEmailAndPassword =
  * <dd>Thrown if anonymous accounts are not enabled. Enable anonymous accounts
  *     in the Firebase Console, under the Auth tab.</dd>
  * </dl>
+ *
+ * @example
+ * firebase.auth().signInAnonymously().catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *
+ *   if (errorCode === 'auth/operation-not-allowed') {
+ *     alert('You must enable Anonymous auth in the Firebase Console.');
+ *   } else {
+ *     console.error(error);
+ *   }
+ * });
  *
  * @return {!firebase.Promise<!firebase.User>}
  */
@@ -844,6 +921,34 @@ firebase.auth.AuthProvider.prototype.providerId;
 
 /**
  * Facebook auth provider.
+ *
+ * @example
+ * // Sign in using a redirect.
+ * firebase.auth().getRedirectResult().then(function(result) {
+ *   if (result.credential) {
+ *     // This gives you a Google Access Token.
+ *     var token = result.credential.accessToken;
+ *   }
+ *   var user = result.user;
+ * })
+ * // Start a sign in process for an unauthenticated user.
+ * var provider = new firebase.auth.FacebookAuthProvider();
+ * provider.addScope('user_birthday');
+ * firebase.auth().signInWithRedirect(provider);
+ *
+ * @example
+ * // Sign in using a popup.
+ * var provider = new firebase.auth.FacebookAuthProvider();
+ * provider.addScope('user_birthday');
+ * firebase.auth().signInWithPopup(provider).then(function(result) {
+ *   // This gives you a Facebook Access Token.
+ *   var token = result.credential.accessToken;
+ *   // The signed-in user info.
+ *   var user = result.user;
+ * });
+ *
+ * @see {@link firebase.auth.Auth#onAuthStateChanged} to receive sign in state
+ * changes.
  * @constructor
  * @implements {firebase.auth.AuthProvider}
  */
@@ -853,6 +958,12 @@ firebase.auth.FacebookAuthProvider = function() {};
 firebase.auth.FacebookAuthProvider.PROVIDER_ID;
 
 /**
+ * @example
+ * var cred = firebase.auth.FacebookAuthProvider.credential(
+ *     // `event` from the Facebook auth.authResponseChange callback.
+ *     event.authResponse.accessToken
+ * );
+ *
  * @param {string} token Facebook access token.
  * @return {!firebase.auth.AuthCredential} The auth provider credential.
  */
@@ -871,7 +982,7 @@ firebase.auth.FacebookAuthProvider.prototype.addScope = function(scope) {};
  * popup and redirect sign-in operations.
  * Valid parameters include 'auth_type', 'display' and 'locale'.
  * For a detailed list, check the
- * {@link https://developers.facebook.com/docs/facebook-login/manually-build-a-login-flow/ Facebook}
+ * {@link https://goo.gl/pve4fo Facebook}
  * documentation.
  * Reserved required OAuth 2.0 parameters such as 'client_id', 'redirect_uri',
  * 'scope', 'response_type' and 'state' are not allowed and will be ignored.
@@ -884,6 +995,66 @@ firebase.auth.FacebookAuthProvider.prototype.setCustomParameters =
 
 /**
  * Github auth provider.
+ *
+ * GitHub requires an OAuth 2.0 redirect, so you can either handle the redirect
+ * directly, or use the signInWithPopup handler:
+ *
+ * @example
+ * // Using a redirect.
+ * firebase.auth().getRedirectResult().then(function(result) {
+ *   if (result.credential) {
+ *     // This gives you a GitHub Access Token.
+ *     var token = result.credential.accessToken;
+ *   }
+ *   var user = result.user;
+ * }).catch(function(error) {
+ *   // Handle Errors here.
+ *   var errorCode = error.code;
+ *   var errorMessage = error.message;
+ *   // The email of the user's account used.
+ *   var email = error.email;
+ *   // The firebase.auth.AuthCredential type that was used.
+ *   var credential = error.credential;
+ *   if (errorCode === 'auth/account-exists-with-different-credential') {
+ *     alert('You have signed up with a different provider for that email.');
+ *     // Handle linking here if your app allows it.
+ *   } else {
+ *     console.error(error);
+ *   }
+ * });
+ *
+ * // Start a sign in process for an unauthenticated user.
+ * var provider = new firebase.auth.GithubAuthProvider();
+ * provider.addScope('repo');
+ * firebase.auth().signInWithRedirect(provider);
+ *
+ * @example
+ * // With popup.
+ * var provider = new firebase.auth.GithubAuthProvider();
+ *  provider.addScope('repo');
+ *  firebase.auth().signInWithPopup(provider).then(function(result) {
+ *    // This gives you a GitHub Access Token.
+ *    var token = result.credential.accessToken;
+ *    // The signed-in user info.
+ *    var user = result.user;
+ *  }).catch(function(error) {
+ *    // Handle Errors here.
+ *    var errorCode = error.code;
+ *    var errorMessage = error.message;
+ *    // The email of the user's account used.
+ *    var email = error.email;
+ *    // The firebase.auth.AuthCredential type that was used.
+ *    var credential = error.credential;
+ *    if (errorCode === 'auth/account-exists-with-different-credential') {
+ *      alert('You have signed up with a different provider for that email.');
+ *      // Handle linking here if your app allows it.
+ *    } else {
+ *      console.error(error);
+ *    }
+ *  });
+ *
+ * @see {@link firebase.auth.Auth#onAuthStateChanged} to receive sign in state
+ * changes.
  * @constructor
  * @implements {firebase.auth.AuthProvider}
  */
@@ -893,6 +1064,12 @@ firebase.auth.GithubAuthProvider = function() {};
 firebase.auth.GithubAuthProvider.PROVIDER_ID;
 
 /**
+ * @example
+ * var cred = firebase.auth.FacebookAuthProvider.credential(
+ *     // `event` from the Facebook auth.authResponseChange callback.
+ *     event.authResponse.accessToken
+ * );
+ *
  * @param {string} token Github access token.
  * @return {!firebase.auth.AuthCredential} The auth provider credential.
  */
@@ -923,6 +1100,37 @@ firebase.auth.GithubAuthProvider.prototype.setCustomParameters =
 
 /**
  * Google auth provider.
+ *
+ * @example
+ * // Using a redirect.
+ * firebase.auth().getRedirectResult().then(function(result) {
+ *   if (result.credential) {
+ *     // This gives you a Google Access Token.
+ *     var token = result.credential.accessToken;
+ *   }
+ *   var user = result.user;
+ * });
+ *
+ * // Start a sign in process for an unauthenticated user.
+ * var provider = new firebase.auth.GoogleAuthProvider();
+ * provider.addScope('profile');
+ * provider.addScope('email');
+ * firebase.auth().signInWithRedirect(provider);
+ *
+ * @example
+ * // Using a popup.
+ * var provider = new firebase.auth.GoogleAuthProvider();
+ * provider.addScope('profile');
+ * provider.addScope('email');
+ * firebase.auth().signInWithPopup(provider).then(function(result) {
+ *  // This gives you a Google Access Token.
+ *  var token = result.credential.accessToken;
+ *  // The signed-in user info.
+ *  var user = result.user;
+ * });
+ *
+ * @see {@link firebase.auth.Auth#onAuthStateChanged} to receive sign in state
+ * changes.
  * @constructor
  * @implements {firebase.auth.AuthProvider}
  */
@@ -934,6 +1142,13 @@ firebase.auth.GoogleAuthProvider.PROVIDER_ID;
 /**
  * Creates a credential for Google. At least one of ID token and access token
  * is required.
+ *
+ * @example
+ * // `googleUser` from the onsuccess Google Sign In callback.
+ * var credential = firebase.auth.GoogleAuthProvider.credential(
+              googleUser.getAuthResponse().id_token);
+ * firebase.auth().signInWithCredential(credential)
+ *
  * @param {?string=} idToken Google ID token.
  * @param {?string=} accessToken Google access token.
  * @return {!firebase.auth.AuthCredential} The auth provider credential.
@@ -954,7 +1169,7 @@ firebase.auth.GoogleAuthProvider.prototype.addScope = function(scope) {};
  * Valid parameters include 'hd', 'hl', 'include_granted_scopes', 'login_hint'
  * and 'prompt'.
  * For a detailed list, check the
- * {@link https://developers.google.com/identity/protocols/OpenIDConnect#authenticationuriparameters Google}
+ * {@link https://goo.gl/Xo01Jm Google}
  * documentation.
  * Reserved required OAuth 2.0 parameters such as 'client_id', 'redirect_uri',
  * 'scope', 'response_type' and 'state' are not allowed and will be ignored.
@@ -967,6 +1182,37 @@ firebase.auth.GoogleAuthProvider.prototype.setCustomParameters =
 
 /**
  * Twitter auth provider.
+ *
+ * @example
+ * // Using a redirect.
+ * firebase.auth().getRedirectResult().then(function(result) {
+ *   if (result.credential) {
+ *     // For accessing the Twitter API.
+ *     var token = result.credential.accessToken;
+ *     var secret = result.credential.secret;
+ *   }
+ *   var user = result.user;
+ * });
+ *
+ * // Start a sign in process for an unauthenticated user.
+ * var provider = new firebase.auth.TwitterAuthProvider();
+ * firebase.auth().signInWithRedirect(provider);
+ *
+ * @example
+ * // Using a popup.
+ * var provider = new firebase.auth.TwitterAuthProvider();
+ * provider.addScope('profile');
+ * provider.addScope('email');
+ * firebase.auth().signInWithPopup(provider).then(function(result) {
+ *   // For accessing the Twitter API.
+ *   var token = result.credential.accessToken;
+ *   var secret = result.credential.secret;
+ *   // The signed-in user info.
+ *   var user = result.user;
+ * });
+ *
+ * @see {@link firebase.auth.Auth#onAuthStateChanged} to receive sign in state
+ * changes.
  * @constructor
  * @implements {firebase.auth.AuthProvider}
  */
@@ -1000,6 +1246,10 @@ firebase.auth.TwitterAuthProvider.prototype.setCustomParameters =
 
 /**
  * Email and password auth provider implementation.
+ *
+ * To authenticate: {@link firebase.auth.Auth#createUserWithEmailAndPassword}
+ * and {@link firebase.auth.Auth#signInWithEmailAndPassword}.
+ *
  * @constructor
  * @implements {firebase.auth.AuthProvider}
  */
@@ -1009,6 +1259,12 @@ firebase.auth.EmailAuthProvider = function() {};
 firebase.auth.EmailAuthProvider.PROVIDER_ID;
 
 /**
+ * @example
+ * var cred = firebase.auth.EmailAuthProvider.credential(
+ *     email,
+ *     password
+ * );
+ *
  * @param {string} email Email address.
  * @param {string} password User account password.
  * @return {!firebase.auth.AuthCredential} The auth provider credential.

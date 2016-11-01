@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.5.2
+ * Version: 3.5.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -29,6 +29,19 @@ var firebase = {};
 
 /**
  * Create (and intialize) a FirebaseApp.
+ *
+ * @example
+ * // Retrieve your own options values by adding a web app on
+ * // http://console.firebase.google.com
+ * var options = {
+ *   apiKey: "AIza....",                             // Auth / General Use
+ *   authDomain: "YOUR_APP.firebaseapp.com",         // Auth with popup/redirect
+ *   databaseURL: "https://YOUR_APP.firebaseio.com", // Realtime Database
+ *   storageBucket: "YOUR_APP.appspot.com",          // Storage
+ *   messagingSenderId: "123456789"                  // Cloud Messaging
+ * };
+ * // Initialize default application.
+ * firebase.initializeApp(options);
  *
  * @param {!Object} options Options to configure the services use in the App.
  * @param {string=} name The optional name of the app to initialize ('[DEFAULT]'
@@ -62,7 +75,7 @@ firebase.app = function(name) {};
 firebase.apps;
 
 /**
- * The current SDK version ('3.5.2').
+ * The current SDK version ('3.5.3').
  * @type {string}
  */
 firebase.SDK_VERSION;
