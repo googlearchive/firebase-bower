@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Messaging API.
- * Version: 3.5.3
+ * Version: 3.6.0
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -72,7 +72,7 @@ firebase.messaging.Messaging.prototype.getToken = function() {};
  *
  * @param {(!function(!Object)|!Object)} nextOrObserver This function, or
  *     observer object with `next` defined, is called when a token refresh
- *     has occured.
+ *     has occurred.
  * @return {function()} To stop listening for token
  *   refresh events execute this returned function.
  */
