@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.6.0
+ * Version: 3.6.1
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -75,7 +75,7 @@ firebase.app = function(name) {};
 firebase.apps;
 
 /**
- * The current SDK version ('3.6.0').
+ * The current SDK version ('3.6.1').
  * @type {string}
  */
 firebase.SDK_VERSION;
@@ -154,8 +154,8 @@ firebase.Thenable.prototype.catch = function(onReject) {};
  * @template T
  * @constructor
  * @implements {firebase.Thenable}
- * @param {function((function(T): void)=,
- *                  (function(!Error): void)=)} resolver
+ * @param {function((function(T): void),
+ *                  (function(!Error): void))} resolver
  */
 firebase.Promise = function(resolver) {};
 

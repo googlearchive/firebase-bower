@@ -1,6 +1,6 @@
-/*! @license Firebase v3.6.0
-    Build: 3.6.0-rc.3
-    Terms: https://developers.google.com/terms */
+/*! @license Firebase v3.6.1
+    Build: 3.6.1-rc.3
+    Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
     code: string;
@@ -18,7 +18,7 @@ declare namespace firebase {
     constructor(
         resolver:
             (a?: (a: T) => undefined, b?: (a: Error) => undefined) => any);
-    catch (onReject?: (a: Error) => any): firebase.Thenable<any>;
+    catch(onReject?: (a: Error) => any): firebase.Thenable<any>;
     then(onResolve?: (a: T) => any, onReject?: (a: Error) => any):
         firebase.Promise<any>;
   }
@@ -26,13 +26,13 @@ declare namespace firebase {
   var SDK_VERSION: string;
 
   interface Thenable<T> {
-    catch (onReject?: (a: Error) => any): any;
+    catch(onReject?: (a: Error) => any): any;
     then(onResolve?: (a: T) => any, onReject?: (a: Error) => any):
         firebase.Thenable<any>;
   }
 
   interface User extends firebase.UserInfo {
-    delete (): firebase.Promise<any>;
+    delete(): firebase.Promise<any>;
     emailVerified: boolean;
     getToken(opt_forceRefresh?: boolean): firebase.Promise<any>;
     isAnonymous: boolean;
@@ -80,7 +80,7 @@ declare namespace firebase.app {
   interface App {
     auth(): firebase.auth.Auth;
     database(): firebase.database.Database;
-    delete (): firebase.Promise<any>;
+    delete(): firebase.Promise<any>;
     name: string;
     options: Object;
     storage(): firebase.storage.Storage;
@@ -150,6 +150,7 @@ declare namespace firebase.auth {
   class FacebookAuthProvider_Instance implements firebase.auth.AuthProvider {
     addScope(scope: string): any;
     providerId: string;
+    setCustomParameters(customOAuthParameters: Object): any;
   }
 
   class GithubAuthProvider extends GithubAuthProvider_Instance {
@@ -159,6 +160,7 @@ declare namespace firebase.auth {
   class GithubAuthProvider_Instance implements firebase.auth.AuthProvider {
     addScope(scope: string): any;
     providerId: string;
+    setCustomParameters(customOAuthParameters: Object): any;
   }
 
   class GoogleAuthProvider extends GoogleAuthProvider_Instance {
@@ -169,6 +171,7 @@ declare namespace firebase.auth {
   class GoogleAuthProvider_Instance implements firebase.auth.AuthProvider {
     addScope(scope: string): any;
     providerId: string;
+    setCustomParameters(customOAuthParameters: Object): any;
   }
 
   class TwitterAuthProvider extends TwitterAuthProvider_Instance {
@@ -178,6 +181,7 @@ declare namespace firebase.auth {
   }
   class TwitterAuthProvider_Instance implements firebase.auth.AuthProvider {
     providerId: string;
+    setCustomParameters(customOAuthParameters: Object): any;
   }
 
   type UserCredential = {
@@ -289,8 +293,8 @@ declare namespace firebase.messaging {
   interface Messaging {
     deleteToken(token: string): firebase.Promise<any>|null;
     getToken(): firebase.Promise<any>|null;
-    onMessage(subscriber: any): any|null;
-    onTokenRefresh(subscriber: any): any|null;
+    onMessage(nextOrObserver: Object): () => any;
+    onTokenRefresh(nextOrObserver: Object): () => any;
     requestPermission(): firebase.Promise<any>|null;
     setBackgroundMessageHandler(callback: (a: Object) => any): any;
     useServiceWorker(registration: any): any;
@@ -313,7 +317,7 @@ declare namespace firebase.storage {
   interface Reference {
     bucket: string;
     child(path: string): firebase.storage.Reference;
-    delete (): Promise<any>;
+    delete(): Promise<any>;
     fullPath: string;
     getDownloadURL(): Promise<any>;
     getMetadata(): Promise<any>;
@@ -379,7 +383,7 @@ declare namespace firebase.storage {
 
   interface UploadTask {
     cancel(): boolean;
-    catch (onRejected: (a: Error) => any): Promise<any>;
+    catch(onRejected: (a: Error) => any): Promise<any>;
     on(event: firebase.storage.TaskEvent, nextOrObserver?: null|Object,
        error?: ((a: Error) => any)|null, complete?: (() => any)|null): Function;
     pause(): boolean;
