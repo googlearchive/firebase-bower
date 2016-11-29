@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Messaging API.
- * Version: 3.6.1
+ * Version: 3.6.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *

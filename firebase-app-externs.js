@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.6.1
+ * Version: 3.6.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -28,54 +28,77 @@
 var firebase = {};
 
 /**
- * Create (and intialize) a FirebaseApp.
+ * Creates and initializes a Firebase {@link firebase.app.App app} instance.
+ *
+ * See
+ * {@link
+ *   https://firebase.google.com/docs/web/setup#initialize_the_sdk
+ *   Initialize the SDK} and
+ * {@link
+ *   https://firebase.google.com/docs/web/setup#initialize_multiple_apps
+ *   Initialize multiple apps} for detailed documentation.
  *
  * @example
+ * // Initialize default app
  * // Retrieve your own options values by adding a web app on
- * // http://console.firebase.google.com
- * var options = {
+ * // https://console.firebase.google.com
+ * firebase.initializeApp({
  *   apiKey: "AIza....",                             // Auth / General Use
  *   authDomain: "YOUR_APP.firebaseapp.com",         // Auth with popup/redirect
  *   databaseURL: "https://YOUR_APP.firebaseio.com", // Realtime Database
  *   storageBucket: "YOUR_APP.appspot.com",          // Storage
  *   messagingSenderId: "123456789"                  // Cloud Messaging
- * };
- * // Initialize default application.
- * firebase.initializeApp(options);
+ * });
  *
- * @param {!Object} options Options to configure the services use in the App.
- * @param {string=} name The optional name of the app to initialize ('[DEFAULT]'
- *     if none)
- * @return {!firebase.app.App}
+ * @example
+ * // Initialize another app
+ * var otherApp = firebase.initializeApp({
+ *   databaseURL: "https://<OTHER_DATABASE_NAME>.firebaseio.com",
+ *   storageBucket: "<OTHER_STORAGE_BUCKET>.appspot.com"
+ * }, "otherApp");
+ *
+ * @param {!Object} options Options to configure the app's services.
+ * @param {string=} opt_name Optional name of the app to initialize. If no name
+ *   is provided, the default is `"[DEFAULT]"`.
+ *
+ * @return {!firebase.app.App} The initialized app.
  */
-firebase.initializeApp = function(options, name) {};
+firebase.initializeApp = function(options, opt_name) {};
 
 /**
- * Retrieve an instance of a FirebaseApp.
+ * Retrieves a Firebase {@link firebase.app.App app} instance.
  *
- * With no arguments, this returns the default App.  With a single
- * string argument, it returns the named App.
+ * When called with no arguments, the default app is returned. When an app name
+ * is provided, the app corresponding to that name is returned.
  *
- * This function throws an exception if the app you are trying to access
- * does not exist.
+ * An exception is thrown if the app being retrieved has not yet been
+ * initialized.
  *
- * Usage: firebase.app()
+ * @example
+ * // Return the default app
+ * var app = firebase.app();
+ *
+ * @example
+ * // Return a named app
+ * var otherApp = firebase.app("otherApp");
  *
  * @namespace
- * @param {string} name The optional name of the app to return ('[DEFAULT]' if
- *     none)
- * @return {!firebase.app.App}
+ * @param {string=} opt_name Optional name of the app to return. If no name is
+ *   provided, the default is `"[DEFAULT]"`.
+ *
+ * @return {!firebase.app.App} The app corresponding to the provided app name.
+ *   If no app name is provided, the default app is returned.
  */
-firebase.app = function(name) {};
+firebase.app = function(opt_name) {};
 
 /**
- * A (read-only) array of all the initialized Apps.
+ * A (read-only) array of all initialized apps.
  * @type {!Array<firebase.app.App>}
  */
 firebase.apps;
 
 /**
- * The current SDK version ('3.6.1').
+ * The current SDK version.
  * @type {string}
  */
 firebase.SDK_VERSION;
@@ -84,32 +107,61 @@ firebase.SDK_VERSION;
  * A Firebase App holds the initialization information for a collection of
  * services.
  *
- * DO NOT call this constuctor directly (use
- * <code>firebase.initializeApp()</code> to create an App).
+ * Do not call this constructor directly. Instead, use
+ * {@link firebase#.initializeApp `firebase.initializeApp()`} to create an app.
  *
  * @interface
  */
 firebase.app.App = function() {};
 
 /**
- * The (read-only) name (identifier) for this App. '[DEFAULT]' is the name of
- * the default App.
+ * The (read-only) name for this app.
+ *
+ * The default app's name is `"[DEFAULT]"`.
+ *
+ * @example
+ * // The default app's name is "[DEFAULT]"
+ * firebase.initializeApp(defaultAppConfig);
+ * console.log(firebase.app().name);  // "[DEFAULT]"
+ *
+ * @example
+ * // A named app's name is what you provide to initializeApp()
+ * var otherApp = firebase.initializeApp(otherAppConfig, "other");
+ * console.log(otherApp.name);  // "other"
+ *
  * @type {string}
  */
 firebase.app.App.prototype.name;
 
 /**
- * The (read-only) configuration options (the original parameters given
- * in <code>firebase.initializeApp()</code>).
+ * The (read-only) configuration options for this app. These are the original
+ * parameters given in
+ * {@link firebase#.initializeApp `firebase.initializeApp()`}.
+ *
+ * @example
+ * var app = firebase.initializeApp(config);
+ * console.log(app.options.credential === config.credential);  // true
+ * console.log(app.options.databaseURL === config.databaseURL);  // true
+ *
  * @type {!Object}
  */
 firebase.app.App.prototype.options;
 
 /**
- * Make the given App unusable and free the resources of all associated
+ * Renders this app unusable and frees the resources of all associated
  * services.
  *
- * @return {!firebase.Promise<void>}
+ * @example
+ * app.delete()
+ *   .then(function() {
+ *     console.log("App deleted successfully");
+ *   });
+ *   .catch(function(error) {
+ *     console.log("Error deleting app:", error);
+ *   });
+ *
+ * @return {!firebase.Promise<void>} An empty promise fulfilled when the app has
+ *   been deleted.
  */
 firebase.app.App.prototype.delete = function() {};
 
@@ -252,8 +304,9 @@ firebase.FirebaseError.prototype.name;
  * A string value containing the execution backtrace when the error originally
  * occurred.
  *
- * This information can be useful to you and can be sent to Firebase support to
- * help explain the cause of an error.
+ * This information can be useful to you and can be sent to
+ * {@link https://firebase.google.com/support/ Firebase Support} to help
+ * explain the cause of an error.
  *
  * @type {string}
  */

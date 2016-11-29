@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Storage API.
- * Version: 3.6.1
+ * Version: 3.6.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -20,44 +20,67 @@
  */
 
 /**
- * The namespace for all Firebase Storage functionality.
- * The returned service is initialized with a particular app which contains the
- * project's storage location, or uses the default app if none is provided.
+ * Gets the {@link firebase.storage.Storage `Storage`} service for the default
+ * app or a given app.
  *
- * Usage (either):
+ * `firebase.storage()` can be called with no arguments to access the default
+ * app's {@link firebase.storage.Storage `Storage`} service or as
+ * `firebase.storage(app)` to access the
+ * {@link firebase.storage.Storage `Storage`} service associated with a
+ * specific app.
  *
- * ```
- * firebase.storage()
- * firebase.storage(app)
- * ```
+ * @example
+ * // Get the Storage service for the default app
+ * var defaultStorage = firebase.storage();
+ *
+ * @example
+ * // Get the Storage service for a given app
+ * var otherStorage = firebase.storage(otherApp);
  *
  * @namespace
  * @param {!firebase.app.App=} app The app to create a storage service for.
  *     If not passed, uses the default app.
+ *
  * @return {!firebase.storage.Storage}
  */
 firebase.storage = function(app) {};
 
 /**
- * Access the Storage service from an App instance.
+ * Gets the {@link firebase.storage.Storage `Storage`} service for the current
+ * app.
  *
- * Usage:
- *
- *   app.storage()
+ * @example
+ * var storage = app.storage();
+ * // The above is shorthand for:
+ * // var storage = firebase.storage(app);
  *
  * @return {!firebase.storage.Storage}
  */
 firebase.app.App.prototype.storage = function() {};
 
 /**
- * A service for uploading and downloading large objects to/from Google Cloud
- * Storage.
+ * The Firebase Storage service interface.
+ *
+ * Do not call this constructor directly. Instead, use
+ * {@link firebase.storage `firebase.storage()`}.
+ *
+ * See
+ * {@link
+ *   https://firebase.google.com/docs/storage/web/start/
+ *   Get Started on Web}
+ * for a full guide on how to use the Firebase Storage service.
+ *
  * @interface
  */
 firebase.storage.Storage = function() {};
 
 /**
- * The app associated with this service.
+ * The {@link firebase.app.App app} associated with the `Storage` service
+ * instance.
+ *
+ * @example
+ * var app = storage.app;
+ *
  * @type {!firebase.app.App}
  */
 firebase.storage.Storage.prototype.app;

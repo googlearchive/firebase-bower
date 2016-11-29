@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Auth API.
- * Version: 3.6.1
+ * Version: 3.6.2
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -20,18 +20,28 @@
  */
 
 /**
- * Gets the Auth object for the default App or a given App.
+ * Gets the {@link firebase.auth.Auth `Auth`} service for the default app or a
+ * given app.
  *
- * Usage:
+ * `firebase.auth()` can be called with no arguments to access the default app's
+ * {@link firebase.auth.Auth `Auth`} service or as `firebase.auth(app)` to
+ * access the {@link firebase.auth.Auth `Auth`} service associated with a
+ * specific app.
  *
- *   firebase.auth()
- *   firebase.auth(app)
+ * @example
+ * // Get the Auth service for the default app
+ * var defaultAuth = firebase.auth();
+ *
+ * @example
+ * // Get the Auth service for a given app
+ * var otherAuth = firebase.auth(otherApp);
  *
  * @namespace
- * @param {!firebase.app.App=} app
+ * @param {!firebase.app.App=} opt_app
+ *
  * @return {!firebase.auth.Auth}
  */
-firebase.auth = function(app) {};
+firebase.auth = function(opt_app) {};
 
 /**
  * Interface that represents the credentials returned by an auth provider.
@@ -50,18 +60,17 @@ firebase.auth.AuthCredential = function() {};
   */
 firebase.auth.AuthCredential.prototype.provider;
 
-
 /**
- * Gets the Firebase Auth Service object for an App.
+ * Gets the {@link firebase.auth.Auth `Auth`} service for the current app.
  *
- * Usage:
- *
- *   app.auth()
+ * @example
+ * var auth = app.auth();
+ * // The above is shorthand for:
+ * // var auth = firebase.auth(app);
  *
  * @return {!firebase.auth.Auth}
  */
 firebase.app.App.prototype.auth = function() {};
-
 
 /**
  * User profile information, visible only to the Firebase project's
@@ -480,16 +489,26 @@ firebase.auth.Auth.prototype.checkActionCode = function(code) {};
  */
 firebase.auth.Auth.prototype.applyActionCode = function(code) {};
 
-
 /**
  * The Firebase Auth service interface.
+ *
+ * Do not call this constructor directly. Instead, use
+ * {@link firebase.auth `firebase.auth()`}.
+ *
+ * See
+ * {@link https://firebase.google.com/docs/auth/ Firebase Authentication}
+ * for a full guide on how to use the Firebase Auth service.
  *
  * @interface
  */
 firebase.auth.Auth = function() {};
 
 /**
- * The App associated with the Auth service instance.
+ * The {@link firebase.app.App app} associated with the `Auth` service
+ * instance.
+ *
+ * @example
+ * var app = auth.app;
  *
  * @type {!firebase.app.App}
  */
