@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Storage API.
- * Version: 3.6.2
+ * Version: 3.6.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -217,16 +217,16 @@ firebase.storage.Reference.prototype.putString = function(
 
 /**
  * Deletes the object at this reference's location.
- * @return {!Promise<void>} A promise that resolves if the deletion succeeded
- *     and rejects if it failed, including if the object didn't exist.
+ * @return {!firebase.Promise<void>} A Promise that resolves if the deletion
+ *     succeeded and rejects if it failed, including if the object didn't exist.
  */
 firebase.storage.Reference.prototype.delete = function() {};
 
 /**
  * Fetches metadata for the object at this location, if one exists.
- * @return {!Promise<firebase.storage.FullMetadata>} A promise that resolves
- *     with the metadata, or rejects if the fetch failed, including if the
- *     object did not exist.
+ * @return {!firebase.Promise<firebase.storage.FullMetadata>} A Promise that
+ *     resolves with the metadata, or rejects if the fetch failed, including if
+ *     the object did not exist.
  */
 firebase.storage.Reference.prototype.getMetadata = function() {};
 
@@ -235,8 +235,8 @@ firebase.storage.Reference.prototype.getMetadata = function() {};
  * @param {!firebase.storage.SettableMetadata} metadata The new metadata.
  *     Setting a property to 'null' removes it on the server, while leaving
  *     a property as 'undefined' has no effect.
- * @return {!Promise<firebase.storage.FullMetadata>} A promise that resolves
- *     with the full updated metadata or rejects if the updated failed,
+ * @return {!firebase.Promise<firebase.storage.FullMetadata>} A Promise that
+ *     resolves with the full updated metadata or rejects if the updated failed,
  *     including if the object did not exist.
  */
 firebase.storage.Reference.prototype.updateMetadata = function(metadata) {};
@@ -244,8 +244,9 @@ firebase.storage.Reference.prototype.updateMetadata = function(metadata) {};
 
 /**
  * Fetches a long lived download URL for this object.
- * @return {!Promise<string>} A promise that resolves with the download URL or
- *     rejects if the fetch failed, including if the object did not exist.
+ * @return {!firebase.Promise<string>} A Promise that resolves with the download
+ *     URL or rejects if the fetch failed, including if the object did not
+ *     exist.
  */
 firebase.storage.Reference.prototype.getDownloadURL = function() {};
 
@@ -461,7 +462,7 @@ firebase.storage.UploadTask = function() {};
  * @param {(?function(!firebase.storage.UploadTaskSnapshot):*)=} onFulfilled
  *     The fulfillment callback. Promise chaining works as normal.
  * @param {(?function(!Error):*)=} onRejected The rejection callback.
- * @return {!Promise}
+ * @return {!firebase.Promise}
  */
 firebase.storage.UploadTask.prototype.then = function(onFulfilled, onRejected) {
 };
@@ -469,7 +470,7 @@ firebase.storage.UploadTask.prototype.then = function(onFulfilled, onRejected) {
 /**
  * Equivalent to calling `then(null, onRejected)`.
  * @param {!function(!Error):*} onRejected
- * @return {!Promise}
+ * @return {!firebase.Promise}
  */
 firebase.storage.UploadTask.prototype.catch = function(onRejected) {};
 

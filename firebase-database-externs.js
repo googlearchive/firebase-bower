@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.6.2
+ * Version: 3.6.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -41,12 +41,12 @@
  * var otherDatabase = firebase.database(app);
  *
  * @namespace
- * @param {!firebase.app.App=} opt_app Optional app whose Database service to
+ * @param {!firebase.app.App=} app Optional app whose Database service to
  *   return. If not provided, the default Database service will be returned.
  * @return {!firebase.database.Database} The default Database service if no app
  *   is provided or the Database service associated with the provided app.
  */
-firebase.database = function(opt_app) {};
+firebase.database = function(app) {};
 
 /**
  * Gets the {@link firebase.database.Database `Database`} service for the
@@ -367,7 +367,7 @@ firebase.database.Reference.prototype.root;
  *   array, or null).
  * @param {function(?Error)=} onComplete Callback called when write to server is
  *   complete.
- * @return {!Promise<void>} Resolves when write to server is complete.
+ * @return {!firebase.Promise<void>} Resolves when write to server is complete.
  */
 firebase.database.Reference.prototype.set = function(value, onComplete) {};
 
@@ -414,7 +414,7 @@ firebase.database.Reference.prototype.set = function(value, onComplete) {};
  * @param {!Object} values Object containing multiple values.
  * @param {function(?Error)=} onComplete Callback called when write to server is
  *   complete.
- * @return {!Promise<void>} Resolves when update on server is complete.
+ * @return {!firebase.Promise<void>} Resolves when update on server is complete.
  */
 firebase.database.Reference.prototype.update = function(values, onComplete) {};
 
@@ -432,7 +432,7 @@ firebase.database.Reference.prototype.update = function(values, onComplete) {};
  * @param {*} newVal
  * @param {string|number|null} newPriority
  * @param {function(?Error)=} onComplete
- * @return {!Promise<void>}
+ * @return {!firebase.Promise<void>}
  */
 firebase.database.Reference.prototype.setWithPriority =
     function(newVal, newPriority, onComplete) {};
@@ -461,7 +461,7 @@ firebase.database.Reference.prototype.setWithPriority =
  *
  * @param {function(?Error)=} onComplete Callback called when write to server is
  *   complete.
- * @return {!Promise<void>} Resolves when remove on server is complete.
+ * @return {!firebase.Promise<void>} Resolves when remove on server is complete.
  */
 firebase.database.Reference.prototype.remove = function(onComplete) {};
 
@@ -546,7 +546,7 @@ firebase.database.Reference.prototype.remove = function(onComplete) {};
  *   see intermediate states. You can set this to false to suppress these
  *   intermediate states and instead wait until the transaction has completed
  *   before events are raised.
- * @return {!Promise<{
+ * @return {!firebase.Promise<{
  *   committed: boolean,
  *   snapshot: ?firebase.database.DataSnapshot
  * }>} Returns a Promise that can optionally be used instead of the onComplete
@@ -567,7 +567,7 @@ firebase.database.Reference.prototype.transaction =
  *
  * @param {string|number|null} priority
  * @param {function(?Error)} onComplete
- * @return {!Promise<void>}
+ * @return {!firebase.Promise<void>}
  */
 firebase.database.Reference.prototype.setPriority =
     function(priority, onComplete) {};
@@ -733,8 +733,8 @@ firebase.database.Query.prototype.isEqual = function(other) {};
  * and it will be triggered again every time a new child is added. The
  * `DataSnapshot` passed into the callback will reflect the data for the
  * relevant child. For ordering purposes, it is passed a second argument which
- * is a string containing the key of the previous sibling child by sort order
- * (or `null` if it is the first child).
+ * is a string containing the key of the previous sibling child by sort order,
+ * or `null` if it is the first child.
  *
  * <h4>child_removed event</h4>
  *
@@ -755,7 +755,7 @@ firebase.database.Query.prototype.isEqual = function(other) {};
  * multiple changes to the child. The `DataSnapshot` passed to the callback will
  * contain the new child contents. For ordering purposes, the callback is also
  * passed a second argument which is a string containing the key of the previous
- * sibling child by sort order (or `null` if it is the first child).
+ * sibling child by sort order, or `null` if it is the first child.
  *
  * <h4>child_moved event</h4>
  *
@@ -763,7 +763,7 @@ firebase.database.Query.prototype.isEqual = function(other) {};
  * position relative to its siblings changes. The `DataSnapshot` passed to the
  * callback will be for the data of the child that has moved. It is also passed
  * a second argument which is a string containing the key of the previous
- * sibling child by sort order (or `null` if it is the first child).
+ * sibling child by sort order, or `null` if it is the first child.
  *
  * @example <caption>Handle a new value:</caption>
  * ref.on('value', function(dataSnapshot) {
@@ -796,8 +796,8 @@ firebase.database.Query.prototype.isEqual = function(other) {};
  *   callback that fires when the specified event occurs. The callback will be
  *   passed a DataSnapshot. For ordering purposes, "child_added",
  *   "child_changed", and "child_moved" will also be passed a string containing
- *   the key of the previous child, by sort order (or `null` if it is the
- *   first child).
+ *   the key of the previous child, by sort order, or `null` if it is the
+ *   first child.
  * @param {(function(Error)|Object)=} cancelCallbackOrContext An optional
  *   callback that will be notified if your event subscription is ever canceled
  *   because your client does not have permission to read this data (or it had
@@ -860,8 +860,10 @@ firebase.database.Query.prototype.off =
  * Listens for exactly one event of the specified event type, and then stops
  * listening.
  *
- * This is equivalent to calling `on()`, and then calling `off()` inside the
- * callback function. See `on()` for details on the event types.
+ * This is equivalent to calling {@link firebase.database.Query#on `on()`}, and
+ * then calling {@link firebase.database.Query#off `off()`} inside the callback
+ * function. See {@link firebase.database.Query#on `on()`} for details on the
+ * event types.
  *
  * @example
  * // Basic usage of .once() to read the data located at ref.
@@ -876,15 +878,15 @@ firebase.database.Query.prototype.off =
  *   callback that fires when the specified event occurs. The callback will be
  *   passed a DataSnapshot. For ordering purposes, "child_added",
  *   "child_changed", and "child_moved" will also be passed a string containing
- *   the key of the previous child by sort order (or `null` if it is the
- *   first child).
+ *   the key of the previous child by sort order, or `null` if it is the
+ *   first child.
  * @param {(function(Error)|Object)=} failureCallbackOrContext An optional
  *   callback that will be notified if your client does not have permission to
  *   read the data. This callback will be passed an `Error` object indicating
  *   why the failure occurred.
  * @param {Object=} context If provided, this object will be used as `this`
  *   when calling your callback(s).
- * @return {!Promise<*>}
+ * @return {!firebase.Promise<*>}
  */
 firebase.database.Query.prototype.once =
     function(eventType, successCallback, failureCallbackOrContext, context) {};
@@ -1540,7 +1542,7 @@ firebase.database.DataSnapshot.prototype.ref;
  *
  * To avoid problems when a connection is dropped before the requests can be
  * transferred to the Database server, these functions should be called before
- * any data is written.
+ * writing any data.
  *
  * Note that `onDisconnect` operations are only triggered once. If you want an
  * operation to occur each time a disconnect occurs, you'll need to re-establish
@@ -1556,8 +1558,8 @@ firebase.database.OnDisconnect = function() {};
  * location and all children.
  *
  * If a write has been queued for this location via a `set()` or `update()` at a
- * parent location, the write at this location will be canceled, though all
- * other siblings will still be written.
+ * parent location, the write at this location will be canceled, though writes
+ * to sibling locations will still occur.
  *
  * @example
  * var ref = firebase.database().ref("onlineState");
@@ -1569,7 +1571,7 @@ firebase.database.OnDisconnect = function() {};
  *   be called when synchronization to the server has completed. The callback
  *   will be passed a single parameter: null for success, or an Error object
  *   indicating a failure.
- * @return {!Promise<void>} Resolves when synchronization to the server
+ * @return {!firebase.Promise<void>} Resolves when synchronization to the server
  *   is complete.
  */
 firebase.database.OnDisconnect.prototype.cancel = function(onComplete) {};
@@ -1583,7 +1585,7 @@ firebase.database.OnDisconnect.prototype.cancel = function(onComplete) {};
  *   be called when synchronization to the server has completed. The callback
  *   will be passed a single parameter: null for success, or an Error object
  *   indicating a failure.
- * @return {!Promise<void>} Resolves when synchronization to the server
+ * @return {!firebase.Promise<void>} Resolves when synchronization to the server
  *   is complete.
  */
 firebase.database.OnDisconnect.prototype.remove = function(onComplete) {};
@@ -1614,7 +1616,7 @@ firebase.database.OnDisconnect.prototype.remove = function(onComplete) {};
  *   will be called when synchronization to the Database server has completed.
  *   The callback will be passed a single parameter: null for success, or an
  *   `Error` object indicating a failure.
- * @return {!Promise<void>} Resolves when synchronization to the
+ * @return {!firebase.Promise<void>} Resolves when synchronization to the
  *   Database is complete.
  */
 firebase.database.OnDisconnect.prototype.set = function(value, onComplete) {};
@@ -1628,7 +1630,7 @@ firebase.database.OnDisconnect.prototype.set = function(value, onComplete) {};
  * @param {*} value
  * @param {number|string|null} priority
  * @param {function(?Error)=} onComplete
- * @return {!Promise<void>}
+ * @return {!firebase.Promise<void>}
  */
 firebase.database.OnDisconnect.prototype.setWithPriority =
     function(value, priority, onComplete) {};
@@ -1647,8 +1649,8 @@ firebase.database.OnDisconnect.prototype.setWithPriority =
  * only the referenced properties at the current location (instead of replacing
  * all the child properties at the current location).
  *
- * See {@link firebase.database.Reference#update} for examples of using
- * the connected version of `update`.
+ * See more examples using the connected version of
+ * {@link firebase.database.Reference#update `update()`}.
  *
  * @example
  * var ref = firebase.database().ref("users/ada");
@@ -1666,7 +1668,7 @@ firebase.database.OnDisconnect.prototype.setWithPriority =
  *   be called when synchronization to the server has completed. The
  *   callback will be passed a single parameter: null for success, or an Error
  *   object indicating a failure.
- * @return {!Promise<void>} Resolves when synchronization to the
+ * @return {!firebase.Promise<void>} Resolves when synchronization to the
  *   Database is complete.
  */
 firebase.database.OnDisconnect.prototype.update =

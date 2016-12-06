@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Auth API.
- * Version: 3.6.2
+ * Version: 3.6.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -37,11 +37,11 @@
  * var otherAuth = firebase.auth(otherApp);
  *
  * @namespace
- * @param {!firebase.app.App=} opt_app
+ * @param {!firebase.app.App=} app
  *
  * @return {!firebase.auth.Auth}
  */
-firebase.auth = function(opt_app) {};
+firebase.auth = function(app) {};
 
 /**
  * Interface that represents the credentials returned by an auth provider.
@@ -151,11 +151,11 @@ firebase.User.prototype.refreshToken;
  * Returns the current token if it has not expired, otherwise this will
  * refresh the token and return a new one.
  *
- * @param {boolean=} opt_forceRefresh Force refresh regardless of token
+ * @param {boolean=} forceRefresh Force refresh regardless of token
  *     expiration.
  * @return {!firebase.Promise<string>}
  */
-firebase.User.prototype.getToken = function(opt_forceRefresh) {};
+firebase.User.prototype.getToken = function(forceRefresh) {};
 
 /**
  * Refreshes the current user, if signed in.
@@ -599,14 +599,14 @@ firebase.auth.Auth.prototype.fetchProvidersForEmail = function(email) {};
  *
  * @param {!Object|function(?firebase.User)}
  *     nextOrObserver An observer object or a function triggered on change.
- * @param {function(!firebase.auth.Error)=} opt_error Optional A function
+ * @param {function(!firebase.auth.Error)=} error Optional A function
  *     triggered on auth error.
- * @param {function()=} opt_completed Optional A function triggered when the
+ * @param {function()=} completed Optional A function triggered when the
  *     observer is removed.
  * @return {!function()} The unsubscribe function for the observer.
  */
 firebase.auth.Auth.prototype.onAuthStateChanged = function(
-    nextOrObserver, opt_error, opt_completed) {};
+    nextOrObserver, error, completed) {};
 
 
 /**

@@ -1,5 +1,5 @@
-/*! @license Firebase v3.6.2
-    Build: 3.6.2-rc.2
+/*! @license Firebase v3.6.3
+    Build: 3.6.3-rc.6
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
@@ -16,8 +16,7 @@ declare namespace firebase {
   }
   class Promise_Instance<T> implements firebase.Thenable<any> {
     constructor(
-        resolver:
-            (a?: (a: T) => undefined, b?: (a: Error) => undefined) => any);
+        resolver: (a: (a: T) => undefined, b: (a: Error) => undefined) => any);
     catch(onReject?: (a: Error) => any): firebase.Thenable<any>;
     then(onResolve?: (a: T) => any, onReject?: (a: Error) => any):
         firebase.Promise<any>;
@@ -34,7 +33,7 @@ declare namespace firebase {
   interface User extends firebase.UserInfo {
     delete(): firebase.Promise<any>;
     emailVerified: boolean;
-    getToken(opt_forceRefresh?: boolean): firebase.Promise<any>;
+    getToken(forceRefresh?: boolean): firebase.Promise<any>;
     isAnonymous: boolean;
     link(credential: firebase.auth.AuthCredential): firebase.Promise<any>;
     linkWithPopup(provider: firebase.auth.AuthProvider): firebase.Promise<any>;
@@ -61,7 +60,7 @@ declare namespace firebase {
     uid: string;
   }
 
-  function app(name: string): firebase.app.App;
+  function app(name?: string): firebase.app.App;
 
   var apps: (firebase.app.App|null)[];
 
@@ -103,8 +102,8 @@ declare namespace firebase.auth {
     fetchProvidersForEmail(email: string): firebase.Promise<any>;
     getRedirectResult(): firebase.Promise<any>;
     onAuthStateChanged(
-        nextOrObserver: Object, opt_error?: (a: firebase.auth.Error) => any,
-        opt_completed?: () => any): () => any;
+        nextOrObserver: Object, error?: (a: firebase.auth.Error) => any,
+        completed?: () => any): () => any;
     sendPasswordResetEmail(email: string): firebase.Promise<any>;
     signInAnonymously(): firebase.Promise<any>;
     signInWithCredential(credential: firebase.auth.AuthCredential):
@@ -284,7 +283,7 @@ declare namespace firebase.database {
   interface ThenableReference extends firebase.database.Reference,
                                       firebase.Thenable<any> {}
 
-  function enableLogging(logger?: any, persistent?: boolean): any;
+  function enableLogging(enabled?: boolean, persistent?: boolean): any;
 }
 
 declare namespace firebase.database.ServerValue {}
@@ -317,10 +316,10 @@ declare namespace firebase.storage {
   interface Reference {
     bucket: string;
     child(path: string): firebase.storage.Reference;
-    delete(): Promise<any>;
+    delete(): firebase.Promise<any>;
     fullPath: string;
-    getDownloadURL(): Promise<any>;
-    getMetadata(): Promise<any>;
+    getDownloadURL(): firebase.Promise<any>;
+    getMetadata(): firebase.Promise<any>;
     name: string;
     parent: firebase.storage.Reference|null;
     put(data: any|Uint8Array|ArrayBuffer,
@@ -333,7 +332,8 @@ declare namespace firebase.storage {
     root: firebase.storage.Reference;
     storage: firebase.storage.Storage;
     toString(): string;
-    updateMetadata(metadata: firebase.storage.SettableMetadata): Promise<any>;
+    updateMetadata(metadata: firebase.storage.SettableMetadata):
+        firebase.Promise<any>;
   }
 
   interface SettableMetadata {
@@ -383,7 +383,7 @@ declare namespace firebase.storage {
 
   interface UploadTask {
     cancel(): boolean;
-    catch(onRejected: (a: Error) => any): Promise<any>;
+    catch(onRejected: (a: Error) => any): firebase.Promise<any>;
     on(event: firebase.storage.TaskEvent, nextOrObserver?: null|Object,
        error?: ((a: Error) => any)|null, complete?: (() => any)|null): Function;
     pause(): boolean;
@@ -391,7 +391,7 @@ declare namespace firebase.storage {
     snapshot: firebase.storage.UploadTaskSnapshot;
     then(
         onFulfilled?: ((a: firebase.storage.UploadTaskSnapshot) => any)|null,
-        onRejected?: ((a: Error) => any)|null): Promise<any>;
+        onRejected?: ((a: Error) => any)|null): firebase.Promise<any>;
   }
 
   interface UploadTaskSnapshot {

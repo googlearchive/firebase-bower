@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.6.2
+ * Version: 3.6.3
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -58,12 +58,12 @@ var firebase = {};
  * }, "otherApp");
  *
  * @param {!Object} options Options to configure the app's services.
- * @param {string=} opt_name Optional name of the app to initialize. If no name
+ * @param {string=} name Optional name of the app to initialize. If no name
  *   is provided, the default is `"[DEFAULT]"`.
  *
  * @return {!firebase.app.App} The initialized app.
  */
-firebase.initializeApp = function(options, opt_name) {};
+firebase.initializeApp = function(options, name) {};
 
 /**
  * Retrieves a Firebase {@link firebase.app.App app} instance.
@@ -83,13 +83,13 @@ firebase.initializeApp = function(options, opt_name) {};
  * var otherApp = firebase.app("otherApp");
  *
  * @namespace
- * @param {string=} opt_name Optional name of the app to return. If no name is
+ * @param {string=} name Optional name of the app to return. If no name is
  *   provided, the default is `"[DEFAULT]"`.
  *
  * @return {!firebase.app.App} The app corresponding to the provided app name.
  *   If no app name is provided, the default app is returned.
  */
-firebase.app = function(opt_name) {};
+firebase.app = function(name) {};
 
 /**
  * A (read-only) array of all initialized apps.
