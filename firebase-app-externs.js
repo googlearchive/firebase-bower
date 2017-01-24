@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.6.6
+ * Version: 3.6.7
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
