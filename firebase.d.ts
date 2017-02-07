@@ -1,5 +1,5 @@
-/*! @license Firebase v3.6.8
-    Build: 3.6.8-rc.1
+/*! @license Firebase v3.6.9
+    Build: 3.6.9-rc.1
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
@@ -284,7 +284,8 @@ declare namespace firebase.database {
   interface ThenableReference extends firebase.database.Reference,
                                       firebase.Thenable<any> {}
 
-  function enableLogging(enabled?: boolean, persistent?: boolean): any;
+  function enableLogging(
+      logger?: boolean|((a: string) => any), persistent?: boolean): any;
 }
 
 declare namespace firebase.database.ServerValue {

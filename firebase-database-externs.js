@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.6.8
+ * Version: 3.6.9
  *
  * Copyright 2016 Google Inc. All Rights Reserved.
  *
@@ -92,12 +92,19 @@ firebase.database.Database = function() {};
  * // Enable logging across page refreshes
  * firebase.database.enableLogging(true, true);
  *
- * @param {boolean=} enabled Enables logging if `true`; disables logging if
- *   `false`.
+ * @example
+ * // Provide custom logger which prefixes log statements with "[FIREBASE]"
+ * firebase.database.enableLogging(function(message) {
+ *   console.log("[FIREBASE]", message);
+ * });
+ *
+ * @param {(boolean|function(string))=} logger Enables logging if `true`;
+ *   disables logging if `false`. You can also provide a custom logger function
+ *   to control how things get logged.
  * @param {boolean=} persistent Remembers the logging state between page
  *   refreshes if `true`.
  */
-firebase.database.enableLogging = function(enabled, persistent) {};
+firebase.database.enableLogging = function(logger, persistent) {};
 
 /**
  * @namespace
@@ -1081,8 +1088,8 @@ firebase.database.Query.prototype.orderByValue = function() {};
  *   type depends on which `orderBy*()` function was used in this query.
  *   Specify a value that matches the `orderBy*()` type. When used in
  *   combination with `orderByKey()`, the value must be a string.
- * @param {string=} key The child key to start at. This argument is allowed if
- *   ordering by child, value, or priority.
+ * @param {string=} key The child key to start at. This argument is only allowed
+ *   if ordering by child, value, or priority.
  * @return {!firebase.database.Query}
  */
 firebase.database.Query.prototype.startAt = function(value, key) {};
@@ -1118,7 +1125,7 @@ firebase.database.Query.prototype.startAt = function(value, key) {};
  *   combination with `orderByKey()`, the value must be a string.
  * @param {string=} key The child key to end at, among the children with the
  *   previously specified priority. This argument is only allowed if ordering by
- *   priority.
+ *   child, value, or priority.
  * @return {!firebase.database.Query}
  */
 firebase.database.Query.prototype.endAt = function(value, key) {};
@@ -1153,7 +1160,7 @@ firebase.database.Query.prototype.endAt = function(value, key) {};
  *   combination with `orderByKey()`, the value must be a string.
  * @param {string=} key The child key to start at, among the children with the
  *   previously specified priority. This argument is only allowed if ordering by
- *   priority.
+ *   child, value, or priority.
  * @return {!firebase.database.Query}
  */
 firebase.database.Query.prototype.equalTo = function(value, key) {};
