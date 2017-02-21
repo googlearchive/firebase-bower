@@ -1,8 +1,8 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.6.9
+ * Version: 3.6.10
  *
- * Copyright 2016 Google Inc. All Rights Reserved.
+ * Copyright 2017 Google Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -144,13 +144,13 @@ firebase.database.Database.prototype.app;
  *
  * @example
  * // Get a reference to the root of the Database
- * var rootRef = firebase.database.ref();
+ * var rootRef = firebase.database().ref();
  *
  * @example
  * // Get a reference to the /users/ada node
- * var adaRef = firebase.database.ref("users/ada");
+ * var adaRef = firebase.database().ref("users/ada");
  * // The above is shorthand for the following operations:
- * //var rootRef = firebase.database.ref();
+ * //var rootRef = firebase.database().ref();
  * //var adaRef = rootRef.child("users/ada");
  *
  * @param {string=} path Optional path representing the location the returned
@@ -174,11 +174,11 @@ firebase.database.Database.prototype.ref = function(path) {};
  *
  * @example
  * // Get a reference to the root of the Database
- * var rootRef = firebase.database.ref("https://<DATABASE_NAME>.firebaseio.com");
+ * var rootRef = firebase.database().ref("https://<DATABASE_NAME>.firebaseio.com");
  *
  * @example
  * // Get a reference to the /users/ada node
- * var adaRef = firebase.database.ref("https://<DATABASE_NAME>.firebaseio.com/users/ada");
+ * var adaRef = firebase.database().ref("https://<DATABASE_NAME>.firebaseio.com/users/ada");
  *
  * @param {string} url The Firebase URL at which the returned `Reference` will
  *   point.
@@ -258,7 +258,7 @@ firebase.database.Reference = function() {};
  *
  * @example
  * // The key of any non-root reference is the last token in the path
- * var adaRef = firebase.database.ref("users/ada");
+ * var adaRef = firebase.database().ref("users/ada");
  * var key = adaRef.key;  // key === "ada"
  * key = adaRef.child("name/last").key;  // key === "last"
  *
@@ -318,7 +318,7 @@ firebase.database.Reference.prototype.parent;
  *
  * @example
  * // The root of any non-root reference is the root location
- * var adaRef = firebase.database.ref("users/ada");
+ * var adaRef = firebase.database().ref("users/ada");
  * // rootRef and adaRef.root represent the same location
  *
  * @type {!firebase.database.Reference}
@@ -1487,7 +1487,7 @@ firebase.database.DataSnapshot.prototype.hasChildren = function() {};
  * ref.once("value")
  *   .then(function(snapshot) {
  *     var key = snapshot.key; // "ada"
- *     var childKey = snapshot.child("name/last"); // "last"
+ *     var childKey = snapshot.child("name/last").key; // "last"
  *   });
  *
  * @example
@@ -1495,7 +1495,7 @@ firebase.database.DataSnapshot.prototype.hasChildren = function() {};
  * rootRef.once("value")
  *   .then(function(snapshot) {
  *     var key = snapshot.key; // null
- *     var childKey = snapshot.child("users/ada"); // "ada"
+ *     var childKey = snapshot.child("users/ada").key; // "ada"
  *   });
  *
  * @type {string|null}

@@ -1,5 +1,5 @@
-/*! @license Firebase v3.6.9
-    Build: 3.6.9-rc.1
+/*! @license Firebase v3.6.10
+    Build: 3.6.10-rc.1
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
@@ -7,6 +7,7 @@ declare namespace firebase {
     message: string;
     name: string;
     stack: string;
+    toJSON(): Object;
   }
 
   class Promise<T> extends Promise_Instance<T> {
@@ -45,6 +46,7 @@ declare namespace firebase {
     refreshToken: string;
     reload(): firebase.Promise<any>;
     sendEmailVerification(): firebase.Promise<any>;
+    toJSON(): Object;
     unlink(providerId: string): firebase.Promise<any>;
     updateEmail(newEmail: string): firebase.Promise<any>;
     updatePassword(newPassword: string): firebase.Promise<any>;
