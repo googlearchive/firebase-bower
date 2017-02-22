@@ -238,13 +238,13 @@ declare namespace firebase.database {
         callback?: (a: firebase.database.DataSnapshot, b?: string|null) => any,
         context?: Object|null): any;
     on(eventType: string,
-       callback: (a: firebase.database.DataSnapshot|null, b?: string) => any,
+       callback: (a: firebase.database.DataSnapshot, b?: string|null) => any,
        cancelCallbackOrContext?: Object|null, context?: Object|
-       null): (a: firebase.database.DataSnapshot|null, b?: string) => any;
+       null): (a: firebase.database.DataSnapshot, b?: string|null) => any;
     once(
         eventType: string,
         successCallback?:
-            (a: firebase.database.DataSnapshot, b?: string) => any,
+            (a: firebase.database.DataSnapshot, b?: string|null) => any,
         failureCallbackOrContext?: Object|null,
         context?: Object|null): firebase.Promise<any>;
     orderByChild(path: string): firebase.database.Query;
