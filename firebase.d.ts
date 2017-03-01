@@ -1,13 +1,12 @@
-/*! @license Firebase v3.6.10
-    Build: 3.6.10-rc.1
+/*! @license Firebase v3.7.0
+    Build: 3.7.0-rc.2
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
     code: string;
     message: string;
     name: string;
-    stack: string;
-    toJSON(): Object;
+    stack?: string;
   }
 
   class Promise<T> extends Promise_Instance<T> {
@@ -85,7 +84,7 @@ declare namespace firebase.app {
     messaging(): firebase.messaging.Messaging;
     name: string;
     options: Object;
-    storage(): firebase.storage.Storage;
+    storage(url?: string): firebase.storage.Storage;
   }
 }
 
@@ -239,8 +238,8 @@ declare namespace firebase.database {
         context?: Object|null): any;
     on(eventType: string,
        callback: (a: firebase.database.DataSnapshot|null, b?: string) => any,
-       cancelCallbackOrContext?: Object|null, context?: Object|
-       null): (a: firebase.database.DataSnapshot|null, b?: string) => any;
+       cancelCallbackOrContext?: Object|null, context?: Object|null):
+        (a: firebase.database.DataSnapshot|null, b?: string) => any;
     once(
         eventType: string,
         successCallback?:

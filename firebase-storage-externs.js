@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Storage API.
- * Version: 3.6.10
+ * Version: 3.7.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -47,16 +47,21 @@ firebase.storage = function(app) {};
 
 /**
  * Gets the {@link firebase.storage.Storage `Storage`} service for the current
- * app.
+ * app, optionally initialized with a custom storage bucket.
  *
  * @example
  * var storage = app.storage();
  * // The above is shorthand for:
  * // var storage = firebase.storage(app);
  *
+ * @example
+ * var storage = app.storage("gs://your-app.appspot.com");
+ *
+ * @param {string=} url The gs:// url to your Firebase Storage Bucket.
+ *     If not passed, uses the app's default Storage Bucket.
  * @return {!firebase.storage.Storage}
  */
-firebase.app.App.prototype.storage = function() {};
+firebase.app.App.prototype.storage = function(url) {};
 
 /**
  * The Firebase Storage service interface.
