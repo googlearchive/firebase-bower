@@ -1,5 +1,5 @@
-/*! @license Firebase v3.7.0
-    Build: 3.7.0-rc.2
+/*! @license Firebase v3.7.1
+    Build: 3.7.1-rc.1
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
@@ -203,6 +203,7 @@ declare namespace firebase.database {
     key: string|null;
     numChildren(): number;
     ref: firebase.database.Reference;
+    toJSON(): Object|null;
     val(): any;
   }
 
@@ -253,6 +254,7 @@ declare namespace firebase.database {
     ref: firebase.database.Reference;
     startAt(value: number|string|boolean|null, key?: string):
         firebase.database.Query;
+    toJSON(): Object;
     toString(): string;
   }
 

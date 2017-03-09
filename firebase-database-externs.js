@@ -1,6 +1,6 @@
 /**
  * @fileoverview Firebase Database API.
- * Version: 3.7.0
+ * Version: 3.7.1
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -1197,6 +1197,14 @@ firebase.database.Query.prototype.toString = function() {};
 
 
 /**
+ * Returns a JSON-serializable representation of this object.
+ *
+ * @return {!Object} A JSON-serializable representation of this object.
+ */
+firebase.database.Query.prototype.toJSON = function() {};
+
+
+/**
  * A `DataSnapshot` contains data from a Database location.
  *
  * Any time you read data from the Database, you receive the data as a
@@ -1535,6 +1543,13 @@ firebase.database.DataSnapshot.prototype.numChildren = function() {};
  */
 firebase.database.DataSnapshot.prototype.ref;
 
+
+/**
+ * Returns a JSON-serializable representation of this object.
+ *
+ * @return {?Object} A JSON-serializable representation of this object.
+ */
+firebase.database.DataSnapshot.prototype.toJSON = function() {};
 
 
 /**
