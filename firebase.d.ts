@@ -1,5 +1,5 @@
-/*! @license Firebase v3.7.1
-    Build: 3.7.1-rc.1
+/*! @license Firebase v3.7.2
+    Build: 3.7.2-rc.1
     Terms: https://firebase.google.com/terms/ */
 declare namespace firebase {
   interface FirebaseError {
