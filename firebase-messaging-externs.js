@@ -1,10 +1,10 @@
-/*! @license Firebase v3.7.6
-Build: rev-d1c8cec
+/*! @license Firebase v3.7.7
+Build: rev-b312194
 Terms: https://firebase.google.com/terms/ */
 
 /**
  * @fileoverview Firebase Messaging API.
- * Version: 3.7.6
+ * Version: 3.7.7
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *

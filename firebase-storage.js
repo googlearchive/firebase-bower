@@ -1,5 +1,5 @@
-/*! @license Firebase v3.7.6
-Build: rev-d1c8cec
+/*! @license Firebase v3.7.7
+Build: rev-b312194
 Terms: https://firebase.google.com/terms/ */
 
 (function(){for(var h,aa="function"==typeof Object.defineProperties?Object.defineProperty:function(a,b,c){if(c.get||c.set)throw new TypeError("ES3 does not support getters and setters.");a!=Array.prototype&&a!=Object.prototype&&(a[b]=c.value)},l="undefined"!=typeof window&&window===this?this:"undefined"!=typeof global&&null!=global?global:this,n=["Number","MIN_SAFE_INTEGER"],ba=0;ba<n.length-1;ba++){var ca=n[ba];ca in l||(l[ca]={});l=l[ca]}var da=n[n.length-1];
