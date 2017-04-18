@@ -30,10 +30,14 @@ declare namespace firebase {
     getToken (forceRefresh ? : boolean ) : firebase.Promise < any > ;
     isAnonymous : boolean ;
     link (credential : firebase.auth.AuthCredential ) : firebase.Promise < any > ;
+    linkWithCredential (credential : firebase.auth.AuthCredential ) : firebase.Promise < any > ;
     linkWithPopup (provider : firebase.auth.AuthProvider ) : firebase.Promise < any > ;
     linkWithRedirect (provider : firebase.auth.AuthProvider ) : firebase.Promise < any > ;
     providerData : ( firebase.UserInfo | null ) [] ;
     reauthenticate (credential : firebase.auth.AuthCredential ) : firebase.Promise < any > ;
+    reauthenticateWithCredential (credential : firebase.auth.AuthCredential ) : firebase.Promise < any > ;
+    reauthenticateWithPopup (provider : firebase.auth.AuthProvider ) : firebase.Promise < any > ;
+    reauthenticateWithRedirect (provider : firebase.auth.AuthProvider ) : firebase.Promise < any > ;
     refreshToken : string ;
     reload ( ) : firebase.Promise < any > ;
     sendEmailVerification ( ) : firebase.Promise < any > ;
@@ -166,7 +170,7 @@ declare namespace firebase.auth {
     setCustomParameters (customOAuthParameters : Object ) : any ;
   }
 
-  type UserCredential = { credential : firebase.auth.AuthCredential | null , user : firebase.User | null } ;
+  type UserCredential = { credential : firebase.auth.AuthCredential | null , operationType ? : string | null , user : firebase.User | null } ;
 }
 
 declare namespace firebase.database {

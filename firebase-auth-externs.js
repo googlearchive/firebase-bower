@@ -1,10 +1,10 @@
-/*! @license Firebase v3.7.8
-Build: rev-44ec95c
+/*! @license Firebase v3.8.0
+Build: rev-69367dd
 Terms: https://firebase.google.com/terms/ */
 
 /**
  * @fileoverview Firebase Auth API.
- * Version: 3.7.8
+ * Version: 3.8.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -182,6 +182,65 @@ firebase.User.prototype.sendEmailVerification = function() {};
 /**
  * Links the user account with the given credentials.
  *
+ * This API is deprecated. Use {@link firebase.User#linkWithCredential} instead.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/provider-already-linked</dt>
+ * <dd>Thrown if the provider has already been linked to the user. This error is
+ *     thrown even if this is not the same provider's account that is currently
+ *     linked to the user.</dd>
+ * <dt>auth/invalid-credential</dt>
+ * <dd>Thrown if the provider's credential is not valid. This can happen if it
+ *     has already expired when calling link, or if it used invalid token(s).
+ *     Please refer to the Guide, under the provider's section you tried to
+ *     link, and make sure you pass in the correct parameter to the credential
+ *     method.</dd>
+ * <dt>auth/credential-already-in-use</dt>
+ * <dd>Thrown if the account corresponding to the credential already exists
+ *     among your users, or is already linked to a Firebase User.
+ *     For example, this error could be thrown if you are upgrading an anonymous
+ *     user to a Google user by linking a Google credential to it and the Google
+ *     credential used is already associated with an existing Firebase Google
+ *     user.
+ *     An <code>error.email</code> and <code>error.credential</code>
+ *     ({@link firebase.auth.AuthCredential}) fields are also provided. You can
+ *     recover from this error by signing in with that credential directly via
+ *     {@link firebase.auth.Auth#signInWithCredential}.</dd>
+ * <dt>auth/email-already-in-use</dt>
+ * <dd>Thrown if the email corresponding to the credential already exists
+ *     among your users. When thrown while linking a credential to an existing
+ *     user, an <code>error.email</code> and <code>error.credential</code>
+ *     ({@link firebase.auth.AuthCredential}) fields are also provided.
+ *     You have to link the credential to the existing user with that email if
+ *     you wish to continue signing in with that credential. To do so, call
+ *     {@link firebase.auth.Auth#fetchProvidersForEmail}, sign in to
+ *     <code>error.email</code> via one of the providers returned and then
+ *     {@link firebase.User#link} the original credential to that newly signed
+ *     in user.</dd>
+ * <dt>auth/operation-not-allowed</dt>
+ * <dd>Thrown if you have not enabled the provider in the Firebase Console. Go
+ *     to the Firebase Console for your project, in the Auth section and the
+ *     <strong>Sign in Method</strong> tab and configure the provider.</dd>
+ * <dt>auth/invalid-email</dt>
+ * <dd>Thrown if the email used in a
+ *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
+ * <dt>auth/wrong-password</dt>
+ * <dd>Thrown if the password used in a
+ *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
+ *     the user associated with the email does not have a password.</dd>
+ * </dl>
+ *
+ * @param {!firebase.auth.AuthCredential} credential The auth credential.
+ * @return {!firebase.Promise<!firebase.User>}
+ * @deprecated
+ */
+firebase.User.prototype.link = function(credential) {};
+
+
+/**
+ * Links the user account with the given credentials.
+ *
  * <h4>Error Codes</h4>
  * <dl>
  * <dt>auth/provider-already-linked</dt>
@@ -232,7 +291,7 @@ firebase.User.prototype.sendEmailVerification = function() {};
  * @param {!firebase.auth.AuthCredential} credential The auth credential.
  * @return {!firebase.Promise<!firebase.User>}
  */
-firebase.User.prototype.link = function(credential) {};
+firebase.User.prototype.linkWithCredential = function(credential) {};
 
 
 /**
@@ -249,6 +308,43 @@ firebase.User.prototype.link = function(credential) {};
  * @return {!firebase.Promise<!firebase.User>}
  */
 firebase.User.prototype.unlink = function(providerId) {};
+
+
+/**
+ * Re-authenticates a user using a fresh credential. Use before operations
+ * such as {@link firebase.User#updatePassword} that require tokens from recent
+ * sign-in attempts.
+ *
+ * This API is deprecated. Use
+ * {@link firebase.User#reauthenticateWithCredential} instead.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/user-mismatch</dt>
+ * <dd>Thrown if the credential given does not correspond to the user.</dd>
+ * <dt>auth/user-not-found</dt>
+ * <dd>Thrown if the credential given does not correspond to any existing user.
+ *     </dd>
+ * <dt>auth/invalid-credential</dt>
+ * <dd>Thrown if the provider's credential is not valid. This can happen if it
+ *     has already expired when calling link, or if it used invalid token(s).
+ *     Please refer to the Guide, under the provider's section you tried to
+ *     link, and make sure you pass in the correct parameter to the credential
+ *     method.</dd>
+ * <dt>auth/invalid-email</dt>
+ * <dd>Thrown if the email used in a
+ *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
+ * <dt>auth/wrong-password</dt>
+ * <dd>Thrown if the password used in a
+ *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
+ *     the user associated with the email does not have a password.</dd>
+ * </dl>
+ *
+ * @param {!firebase.auth.AuthCredential} credential
+ * @return {!firebase.Promise<void>}
+ * @deprecated
+ */
+firebase.User.prototype.reauthenticate = function(credential) {};
 
 
 /**
@@ -281,7 +377,7 @@ firebase.User.prototype.unlink = function(providerId) {};
  * @param {!firebase.auth.AuthCredential} credential
  * @return {!firebase.Promise<void>}
  */
-firebase.User.prototype.reauthenticate = function(credential) {};
+firebase.User.prototype.reauthenticateWithCredential = function(credential) {};
 
 
 /**
@@ -840,11 +936,14 @@ firebase.auth.Auth.prototype.signInAnonymously = function() {};
 
 
 /**
- * A structure containing a User and an AuthCredential.
+ * A structure containing a User, an AuthCredential and the operationType.
+ * operationType could be 'signIn' for a sign-in operation, 'link' for a linking
+ * operation and 'reauthenticate' for a reauthentication operation.
  *
  * @typedef {{
  *   user: ?firebase.User,
- *   credential: ?firebase.auth.AuthCredential
+ *   credential: ?firebase.auth.AuthCredential,
+ *   operationType: (?string|undefined)
  * }}
  */
 firebase.auth.UserCredential;
