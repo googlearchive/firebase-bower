@@ -1,10 +1,10 @@
-/*! @license Firebase v3.8.0
-Build: rev-69367dd
+/*! @license Firebase v3.9.0
+Build: rev-cc77c9e
 Terms: https://firebase.google.com/terms/ */
 
 /**
  * @fileoverview Firebase Auth API.
- * Version: 3.8.0
+ * Version: 3.9.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -59,10 +59,22 @@ firebase.auth.AuthCredential = function() {};
 /**
  * The authentication provider ID for the credential.
  * For example, 'facebook.com', or 'google.com'.
+ *
+ * This property is deprecated.
+ * Use {@link firebase.auth.AuthCredential#providerId} instead.
+ *
+ * @type {string}
+ * @deprecated
+ */
+firebase.auth.AuthCredential.prototype.provider;
+
+/**
+ * The authentication provider ID for the credential.
+ * For example, 'facebook.com', or 'google.com'.
   *
   * @type {string}
   */
-firebase.auth.AuthCredential.prototype.provider;
+firebase.auth.AuthCredential.prototype.providerId;
 
 /**
  * Gets the {@link firebase.auth.Auth `Auth`} service for the current app.
@@ -193,9 +205,8 @@ firebase.User.prototype.sendEmailVerification = function() {};
  * <dt>auth/invalid-credential</dt>
  * <dd>Thrown if the provider's credential is not valid. This can happen if it
  *     has already expired when calling link, or if it used invalid token(s).
- *     Please refer to the Guide, under the provider's section you tried to
- *     link, and make sure you pass in the correct parameter to the credential
- *     method.</dd>
+ *     See the Firebase documentation for your provider, and make sure you pass
+ *     in the correct parameters to the credential method.</dd>
  * <dt>auth/credential-already-in-use</dt>
  * <dd>Thrown if the account corresponding to the credential already exists
  *     among your users, or is already linked to a Firebase User.
@@ -250,9 +261,8 @@ firebase.User.prototype.link = function(credential) {};
  * <dt>auth/invalid-credential</dt>
  * <dd>Thrown if the provider's credential is not valid. This can happen if it
  *     has already expired when calling link, or if it used invalid token(s).
- *     Please refer to the Guide, under the provider's section you tried to
- *     link, and make sure you pass in the correct parameter to the credential
- *     method.</dd>
+ *     See the Firebase documentation for your provider, and make sure you pass
+ *     in the correct parameters to the credential method.</dd>
  * <dt>auth/credential-already-in-use</dt>
  * <dd>Thrown if the account corresponding to the credential already exists
  *     among your users, or is already linked to a Firebase User.
@@ -281,11 +291,11 @@ firebase.User.prototype.link = function(credential) {};
  *     <strong>Sign in Method</strong> tab and configure the provider.</dd>
  * <dt>auth/invalid-email</dt>
  * <dd>Thrown if the email used in a
- *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
+ *     {@link firebase.auth.EmailAuthProvider#.credential} is invalid.</dd>
  * <dt>auth/wrong-password</dt>
  * <dd>Thrown if the password used in a
- *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
- *     the user associated with the email does not have a password.</dd>
+ *     {@link firebase.auth.EmailAuthProvider#.credential} is not correct or
+ *     when the user associated with the email does not have a password.</dd>
  * </dl>
  *
  * @param {!firebase.auth.AuthCredential} credential The auth credential.
@@ -328,9 +338,8 @@ firebase.User.prototype.unlink = function(providerId) {};
  * <dt>auth/invalid-credential</dt>
  * <dd>Thrown if the provider's credential is not valid. This can happen if it
  *     has already expired when calling link, or if it used invalid token(s).
- *     Please refer to the Guide, under the provider's section you tried to
- *     link, and make sure you pass in the correct parameter to the credential
- *     method.</dd>
+ *     See the Firebase documentation for your provider, and make sure you pass
+ *     in the correct parameters to the credential method.</dd>
  * <dt>auth/invalid-email</dt>
  * <dd>Thrown if the email used in a
  *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
@@ -362,9 +371,8 @@ firebase.User.prototype.reauthenticate = function(credential) {};
  * <dt>auth/invalid-credential</dt>
  * <dd>Thrown if the provider's credential is not valid. This can happen if it
  *     has already expired when calling link, or if it used invalid token(s).
- *     Please refer to the Guide, under the provider's section you tried to
- *     link, and make sure you pass in the correct parameter to the credential
- *     method.</dd>
+ *     See the Firebase documentation for your provider, and make sure you pass
+ *     in the correct parameters to the credential method.</dd>
  * <dt>auth/invalid-email</dt>
  * <dd>Thrown if the email used in a
  *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>

@@ -1,10 +1,10 @@
-/*! @license Firebase v3.8.0
-Build: rev-69367dd
+/*! @license Firebase v3.9.0
+Build: rev-cc77c9e
 Terms: https://firebase.google.com/terms/ */
 
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 3.8.0
+ * Version: 3.9.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
