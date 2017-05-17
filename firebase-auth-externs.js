@@ -1,10 +1,25 @@
-/*! @license Firebase v3.9.0
-Build: rev-cc77c9e
+/*! @license Firebase v4.0.0
+Build: rev-c054dab
 Terms: https://firebase.google.com/terms/ */
 
 /**
+* Copyright 2017 Google Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+/**
  * @fileoverview Firebase Auth API.
- * Version: 3.9.0
+ * Version: 4.0.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -55,18 +70,6 @@ firebase.auth = function(app) {};
  * @interface
  */
 firebase.auth.AuthCredential = function() {};
-
-/**
- * The authentication provider ID for the credential.
- * For example, 'facebook.com', or 'google.com'.
- *
- * This property is deprecated.
- * Use {@link firebase.auth.AuthCredential#providerId} instead.
- *
- * @type {string}
- * @deprecated
- */
-firebase.auth.AuthCredential.prototype.provider;
 
 /**
  * The authentication provider ID for the credential.
@@ -139,6 +142,14 @@ firebase.UserInfo.prototype.photoURL;
  */
 firebase.User;
 
+/**
+ * The phone number normalized based on the E.164 standard (e.g. +16505550101)
+ * for the current user. This is null if the user has no phone credential linked
+ * to the account.
+ * @type {?string}
+ */
+firebase.User.prototype.phoneNumber;
+
 /** @type {boolean} */
 firebase.User.prototype.isAnonymous;
 
@@ -167,11 +178,26 @@ firebase.User.prototype.refreshToken;
  * Returns the current token if it has not expired, otherwise this will
  * refresh the token and return a new one.
  *
+ * This property is deprecated. Use {@link firebase.User#getIdToken} instead.
+ *
+ * @param {boolean=} forceRefresh Force refresh regardless of token
+ *     expiration.
+ * @return {!firebase.Promise<string>}
+ * @deprecated
+ */
+firebase.User.prototype.getToken = function(forceRefresh) {};
+
+/**
+ * Returns a JWT token used to identify the user to a Firebase service.
+ *
+ * Returns the current token if it has not expired, otherwise this will
+ * refresh the token and return a new one.
+ *
  * @param {boolean=} forceRefresh Force refresh regardless of token
  *     expiration.
  * @return {!firebase.Promise<string>}
  */
-firebase.User.prototype.getToken = function(forceRefresh) {};
+firebase.User.prototype.getIdToken = function(forceRefresh) {};
 
 /**
  * Refreshes the current user, if signed in.
@@ -194,8 +220,6 @@ firebase.User.prototype.sendEmailVerification = function() {};
 /**
  * Links the user account with the given credentials.
  *
- * This API is deprecated. Use {@link firebase.User#linkWithCredential} instead.
- *
  * <h4>Error Codes</h4>
  * <dl>
  * <dt>auth/provider-already-linked</dt>
@@ -214,10 +238,11 @@ firebase.User.prototype.sendEmailVerification = function() {};
  *     user to a Google user by linking a Google credential to it and the Google
  *     credential used is already associated with an existing Firebase Google
  *     user.
- *     An <code>error.email</code> and <code>error.credential</code>
- *     ({@link firebase.auth.AuthCredential}) fields are also provided. You can
- *     recover from this error by signing in with that credential directly via
- *     {@link firebase.auth.Auth#signInWithCredential}.</dd>
+ *     The fields <code>error.email</code>, <code>error.phoneNumber</code>, and
+ *     <code>error.credential</code> ({@link firebase.auth.AuthCredential})
+ *     may be provided, depending on the type of credential. You can recover
+ *     from this error by signing in with <code>error.credential</code> directly
+ *     via {@link firebase.auth.Auth#signInWithCredential}.</dd>
  * <dt>auth/email-already-in-use</dt>
  * <dd>Thrown if the email corresponding to the credential already exists
  *     among your users. When thrown while linking a credential to an existing
@@ -227,8 +252,8 @@ firebase.User.prototype.sendEmailVerification = function() {};
  *     you wish to continue signing in with that credential. To do so, call
  *     {@link firebase.auth.Auth#fetchProvidersForEmail}, sign in to
  *     <code>error.email</code> via one of the providers returned and then
- *     {@link firebase.User#link} the original credential to that newly signed
- *     in user.</dd>
+ *     {@link firebase.User#linkWithCredential} the original credential to that
+ *     newly signed in user.</dd>
  * <dt>auth/operation-not-allowed</dt>
  * <dd>Thrown if you have not enabled the provider in the Firebase Console. Go
  *     to the Firebase Console for your project, in the Auth section and the
@@ -238,19 +263,27 @@ firebase.User.prototype.sendEmailVerification = function() {};
  *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
  * <dt>auth/wrong-password</dt>
  * <dd>Thrown if the password used in a
- *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
- *     the user associated with the email does not have a password.</dd>
+ *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or
+ *     when the user associated with the email does not have a password.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
  * </dl>
  *
  * @param {!firebase.auth.AuthCredential} credential The auth credential.
  * @return {!firebase.Promise<!firebase.User>}
- * @deprecated
  */
-firebase.User.prototype.link = function(credential) {};
+firebase.User.prototype.linkWithCredential = function(credential) {};
 
 
 /**
- * Links the user account with the given credentials.
+ * Links the user account with the given credentials, and returns any available
+ * additional user information, such as user name.
  *
  * <h4>Error Codes</h4>
  * <dl>
@@ -270,10 +303,11 @@ firebase.User.prototype.link = function(credential) {};
  *     user to a Google user by linking a Google credential to it and the Google
  *     credential used is already associated with an existing Firebase Google
  *     user.
- *     An <code>error.email</code> and <code>error.credential</code>
- *     ({@link firebase.auth.AuthCredential}) fields are also provided. You can
- *     recover from this error by signing in with that credential directly via
- *     {@link firebase.auth.Auth#signInWithCredential}.</dd>
+ *     The fields <code>error.email</code>, <code>error.phoneNumber</code>, and
+ *     <code>error.credential</code> ({@link firebase.auth.AuthCredential})
+ *     may be provided, depending on the type of credential. You can recover
+ *     from this error by signing in with <code>error.credential</code> directly
+ *     via {@link firebase.auth.Auth#signInWithCredential}.</dd>
  * <dt>auth/email-already-in-use</dt>
  * <dd>Thrown if the email corresponding to the credential already exists
  *     among your users. When thrown while linking a credential to an existing
@@ -283,25 +317,79 @@ firebase.User.prototype.link = function(credential) {};
  *     you wish to continue signing in with that credential. To do so, call
  *     {@link firebase.auth.Auth#fetchProvidersForEmail}, sign in to
  *     <code>error.email</code> via one of the providers returned and then
- *     {@link firebase.User#link} the original credential to that newly signed
- *     in user.</dd>
+ *     {@link firebase.User#linkWithCredential} the original credential to that
+ *     newly signed in user.</dd>
  * <dt>auth/operation-not-allowed</dt>
  * <dd>Thrown if you have not enabled the provider in the Firebase Console. Go
  *     to the Firebase Console for your project, in the Auth section and the
  *     <strong>Sign in Method</strong> tab and configure the provider.</dd>
  * <dt>auth/invalid-email</dt>
  * <dd>Thrown if the email used in a
- *     {@link firebase.auth.EmailAuthProvider#.credential} is invalid.</dd>
+ *     {@link firebase.auth.EmailAuthProvider#credential} is invalid.</dd>
  * <dt>auth/wrong-password</dt>
  * <dd>Thrown if the password used in a
- *     {@link firebase.auth.EmailAuthProvider#.credential} is not correct or
+ *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or
  *     when the user associated with the email does not have a password.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
  * </dl>
  *
  * @param {!firebase.auth.AuthCredential} credential The auth credential.
- * @return {!firebase.Promise<!firebase.User>}
+ * @return {!firebase.Promise<!firebase.auth.UserCredential>}
  */
-firebase.User.prototype.linkWithCredential = function(credential) {};
+firebase.User.prototype.linkAndRetrieveDataWithCredential =
+    function(credential) {};
+
+
+/**
+ * Links the user account with the given phone number.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/provider-already-linked</dt>
+ * <dd>Thrown if the provider has already been linked to the user. This error is
+ *     thrown even if this is not the same provider's account that is currently
+ *     linked to the user.</dd>
+ * <dt>auth/captcha-check-failed</dt>
+ * <dd>Thrown if the reCAPTCHA response token was invalid, expired, or if
+ *     this method was called from a non-whitelisted domain.</dd>
+ * <dt>auth/invalid-phone-number</dt>
+ * <dd>Thrown if the phone number has an invalid format.</dd>
+ * <dt>auth/missing-phone-number</dt>
+ * <dd>Thrown if the phone number is missing.</dd>
+ * <dt>auth/quota-exceeded</dt>
+ * <dd>Thrown if the SMS quota for the Firebase project has been exceeded.</dd>
+ * <dt>auth/user-disabled</dt>
+ * <dd>Thrown if the user corresponding to the given phone number has been
+ *     disabled.</dd>
+ * <dt>auth/credential-already-in-use</dt>
+ * <dd>Thrown if the account corresponding to the phone number already exists
+ *     among your users, or is already linked to a Firebase User.
+ *     The fields <code>error.phoneNumber</code> and
+ *     <code>error.credential</code> ({@link firebase.auth.AuthCredential})
+ *     are provided in this case. You can recover from this error by signing in
+ *     with that credential directly via
+ *     {@link firebase.auth.Auth#signInWithCredential}.</dd>
+ * <dt>auth/operation-not-allowed</dt>
+ * <dd>Thrown if you have not enabled the phone authentication provider in the
+ *     Firebase Console. Go to the Firebase Console for your project, in the
+ *     Auth section and the <strong>Sign in Method</strong> tab and configure
+ *     the provider.</dd>
+ * </dl>
+ *
+ * @param {string} phoneNumber The user's phone number in E.164 format (e.g.
+ *     +16505550101).
+ * @param {!firebase.auth.ApplicationVerifier} applicationVerifier
+ * @return {!firebase.Promise<!firebase.auth.ConfirmationResult>}
+ */
+firebase.User.prototype.linkWithPhoneNumber =
+    function(phoneNumber, applicationVerifier) {};
 
 
 /**
@@ -325,9 +413,6 @@ firebase.User.prototype.unlink = function(providerId) {};
  * such as {@link firebase.User#updatePassword} that require tokens from recent
  * sign-in attempts.
  *
- * This API is deprecated. Use
- * {@link firebase.User#reauthenticateWithCredential} instead.
- *
  * <h4>Error Codes</h4>
  * <dl>
  * <dt>auth/user-mismatch</dt>
@@ -347,17 +432,25 @@ firebase.User.prototype.unlink = function(providerId) {};
  * <dd>Thrown if the password used in a
  *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
  *     the user associated with the email does not have a password.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
  * </dl>
  *
  * @param {!firebase.auth.AuthCredential} credential
  * @return {!firebase.Promise<void>}
- * @deprecated
  */
-firebase.User.prototype.reauthenticate = function(credential) {};
+firebase.User.prototype.reauthenticateWithCredential = function(credential) {};
 
 
 /**
- * Re-authenticates a user using a fresh credential. Use before operations
+ * Re-authenticates a user using a fresh credential, and returns any available
+ * additional user information, such as user name. Use before operations
  * such as {@link firebase.User#updatePassword} that require tokens from recent
  * sign-in attempts.
  *
@@ -380,12 +473,53 @@ firebase.User.prototype.reauthenticate = function(credential) {};
  * <dd>Thrown if the password used in a
  *     {@link firebase.auth.EmailAuthProvider#credential} is not correct or when
  *     the user associated with the email does not have a password.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
  * </dl>
  *
  * @param {!firebase.auth.AuthCredential} credential
  * @return {!firebase.Promise<void>}
  */
-firebase.User.prototype.reauthenticateWithCredential = function(credential) {};
+firebase.User.prototype.reauthenticateAndRetrieveDataWithCredential =
+    function(credential) {};
+
+
+/**
+ * Re-authenticates a user using a fresh credential. Use before operations
+ * such as {@link firebase.User#updatePassword} that require tokens from recent
+ * sign-in attempts.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/user-mismatch</dt>
+ * <dd>Thrown if the credential given does not correspond to the user.</dd>
+ * <dt>auth/user-not-found</dt>
+ * <dd>Thrown if the credential given does not correspond to any existing user.
+ *     </dd>
+ * <dt>auth/captcha-check-failed</dt>
+ * <dd>Thrown if the reCAPTCHA response token was invalid, expired, or if
+ *     this method was called from a non-whitelisted domain.</dd>
+ * <dt>auth/invalid-phone-number</dt>
+ * <dd>Thrown if the phone number has an invalid format.</dd>
+ * <dt>auth/missing-phone-number</dt>
+ * <dd>Thrown if the phone number is missing.</dd>
+ * <dt>auth/quota-exceeded</dt>
+ * <dd>Thrown if the SMS quota for the Firebase project has been exceeded.</dd>
+ * </dl>
+ *
+ * @param {string} phoneNumber The user's phone number in E.164 format (e.g.
+ *     +16505550101).
+ * @param {!firebase.auth.ApplicationVerifier} applicationVerifier
+ * @return {!firebase.Promise<!firebase.auth.ConfirmationResult>}
+ */
+firebase.User.prototype.reauthenticateWithPhoneNumber =
+    function(phoneNumber, applicationVerifier) {};
 
 
 /**
@@ -397,7 +531,8 @@ firebase.User.prototype.reauthenticateWithCredential = function(credential) {};
  *
  * <b>Important:</b> this is a security sensitive operation that requires the
  * user to have recently signed in. If this requirement isn't met, ask the user
- * to authenticate again and then call {@link firebase.User#reauthenticate}.
+ * to authenticate again and then call
+ * {@link firebase.User#reauthenticateWithCredential}.
  *
  * <h4>Error Codes</h4>
  * <dl>
@@ -407,8 +542,8 @@ firebase.User.prototype.reauthenticateWithCredential = function(credential) {};
  * <dd>Thrown if the email is already used by another user.</dd>
  * <dt>auth/requires-recent-login</dt>
  * <dd>Thrown if the user's last sign-in time does not meet the security
- *     threshold. Use {@link firebase.User#reauthenticate} to resolve. This does
- *     not apply if the user is anonymous.</dd>
+ *     threshold. Use {@link firebase.User#reauthenticateWithCredential} to
+ *     resolve. This does not apply if the user is anonymous.</dd>
  * </dl>
  *
  * @param {string} newEmail The new email address.
@@ -422,7 +557,8 @@ firebase.User.prototype.updateEmail = function(newEmail) {};
  *
  * <b>Important:</b> this is a security sensitive operation that requires the
  * user to have recently signed in. If this requirement isn't met, ask the user
- * to authenticate again and then call {@link firebase.User#reauthenticate}.
+ * to authenticate again and then call
+ * {@link firebase.User#reauthenticateWithCredential}.
  *
  * <h4>Error Codes</h4>
  * <dl>
@@ -430,14 +566,31 @@ firebase.User.prototype.updateEmail = function(newEmail) {};
  * <dd>Thrown if the password is not strong enough.</dd>
  * <dt>auth/requires-recent-login</dt>
  * <dd>Thrown if the user's last sign-in time does not meet the security
- *     threshold. Use {@link firebase.User#reauthenticate} to resolve. This does
- *     not apply if the user is anonymous.</dd>
+ *     threshold. Use {@link firebase.User#reauthenticateWithCredential} to
+ *     resolve. This does not apply if the user is anonymous.</dd>
  * </dl>
  *
  * @param {string} newPassword
  * @return {!firebase.Promise<void>}
  */
 firebase.User.prototype.updatePassword = function(newPassword) {};
+
+
+/**
+ * Updates the user's phone number.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the verification code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the verification ID of the credential is not valid.</dd>
+ * </dl>
+ *
+ * @param {!firebase.auth.AuthCredential} phoneCredential
+ * @return {!firebase.Promise<void>}
+ */
+firebase.User.prototype.updatePhoneNumber = function(phoneCredential) {};
 
 
 /**
@@ -483,14 +636,15 @@ firebase.User.prototype.updateProfile = function(profile) {};
  *
  * <b>Important:</b> this is a security sensitive operation that requires the
  * user to have recently signed in. If this requirement isn't met, ask the user
- * to authenticate again and then call {@link firebase.User#reauthenticate}.
+ * to authenticate again and then call
+ * {@link firebase.User#reauthenticateWithCredential}.
  *
  * <h4>Error Codes</h4>
  * <dl>
  * <dt>auth/requires-recent-login</dt>
  * <dd>Thrown if the user's last sign-in time does not meet the security
- *     threshold. Use {@link firebase.User#reauthenticate} to resolve. This does
- *     not apply if the user is anonymous.</dd>
+ *     threshold. Use {@link firebase.User#reauthenticateWithCredential} to
+ *     resolve. This does not apply if the user is anonymous.</dd>
  * </dl>
  *
  * @return {!firebase.Promise<void>}
@@ -704,7 +858,14 @@ firebase.auth.Auth.prototype.fetchProvidersForEmail = function(email) {};
 
 
 /**
- * Adds an observer for auth state changes.
+ * Adds an observer for changes to the user's sign-in state.
+ *
+ * Prior to 4.0.0, this triggered the observer when users were signed in,
+ * signed out, or when the user's ID token changed in situations such as token
+ * expiry or password change. After 4.0.0, the observer is only triggered
+ * on sign-in or sign-out.
+ *
+ * To keep the old behavior, see {@link firebase.auth.Auth#onIdTokenChanged}.
  *
  * @example
  * firebase.auth().onAuthStateChanged(function(user) {
@@ -722,6 +883,30 @@ firebase.auth.Auth.prototype.fetchProvidersForEmail = function(email) {};
  * @return {!function()} The unsubscribe function for the observer.
  */
 firebase.auth.Auth.prototype.onAuthStateChanged = function(
+    nextOrObserver, error, completed) {};
+
+
+/**
+ * Adds an observer for changes to the signed-in user's ID token, which includes
+ * sign-in, sign-out, and token refresh events. This method has the same
+ * behavior as {@link firebase.auth.Auth#onAuthStateChanged} had prior to 4.0.0.
+ *
+ * @example
+ * firebase.auth().onIdTokenChanged(function(user) {
+ *   if (user) {
+ *     // User is signed in or token was refreshed.
+ *   }
+ * });
+ *
+ * @param {!Object|function(?firebase.User)}
+ *     nextOrObserver An observer object or a function triggered on change.
+ * @param {function(!firebase.auth.Error)=} error Optional A function
+ *     triggered on auth error.
+ * @param {function()=} completed Optional A function triggered when the
+ *     observer is removed.
+ * @return {!function()} The unsubscribe function for the observer.
+ */
+firebase.auth.Auth.prototype.onIdTokenChanged = function(
     nextOrObserver, error, completed) {};
 
 
@@ -786,7 +971,7 @@ firebase.auth.Auth.prototype.confirmPasswordReset =
  *     {@link firebase.auth.Auth#fetchProvidersForEmail} and then asking the
  *     user to sign in using one of the returned providers. Once the user is
  *     signed in, the original credential can be linked to the user with
- *     {@link firebase.User#link}.</dd>
+ *     {@link firebase.User#linkWithCredential}.</dd>
  * <dt>auth/invalid-credential</dt>
  * <dd>Thrown if the credential is malformed or has expired.</dd>
  * <dt>auth/operation-not-allowed</dt>
@@ -805,6 +990,14 @@ firebase.auth.Auth.prototype.confirmPasswordReset =
  *     {@link firebase.auth.EmailAuthProvider#credential} and the password is
  *     invalid for the given email, or if the account corresponding to the email
  *     does not have a password set.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
  * </dl>
  *
  * @example
@@ -828,6 +1021,59 @@ firebase.auth.Auth.prototype.confirmPasswordReset =
  * @return {!firebase.Promise<!firebase.User>}
  */
 firebase.auth.Auth.prototype.signInWithCredential = function(credential) {};
+
+/**
+ * Asynchronously signs in with the given credentials, and returns any available
+ * additional user information, such as user name.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/account-exists-with-different-credential</dt>
+ * <dd>Thrown if there already exists an account with the email address
+ *     asserted by the credential. Resolve this by calling
+ *     {@link firebase.auth.Auth#fetchProvidersForEmail} and then asking the
+ *     user to sign in using one of the returned providers. Once the user is
+ *     signed in, the original credential can be linked to the user with
+ *     {@link firebase.User#linkWithCredential}.</dd>
+ * <dt>auth/invalid-credential</dt>
+ * <dd>Thrown if the credential is malformed or has expired.</dd>
+ * <dt>auth/operation-not-allowed</dt>
+ * <dd>Thrown if the type of account corresponding to the credential
+ *     is not enabled. Enable the account type in the Firebase Console, under
+ *     the Auth tab.</dd>
+ * <dt>auth/user-disabled</dt>
+ * <dd>Thrown if the user corresponding to the given credential has been
+ *     disabled.</dd>
+ * <dt>auth/user-not-found</dt>
+ * <dd>Thrown if signing in with a credential from
+ *     {@link firebase.auth.EmailAuthProvider#credential} and there is no user
+ *     corresponding to the given email. </dd>
+ * <dt>auth/wrong-password</dt>
+ * <dd>Thrown if signing in with a credential from
+ *     {@link firebase.auth.EmailAuthProvider#credential} and the password is
+ *     invalid for the given email, or if the account corresponding to the email
+ *     does not have a password set.</dd>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential} and the verification
+ *     code of the credential is not valid.</dd>
+ * <dt>auth/invalid-verification-id</dt>
+ * <dd>Thrown if the credential is a
+ *     {@link firebase.auth.PhoneAuthProvider#credential}  and the verification
+ *     ID of the credential is not valid.</dd>
+ * </dl>
+ *
+ * @example
+ * firebase.auth().signInAndRetrieveDataWithCredential(credential)
+ *     .then(function(userCredential) {
+ *       console.log(userCredential.additionalUserInfo.username);
+ *     });
+ *
+ * @param {!firebase.auth.AuthCredential} credential The auth credential.
+ * @return {!firebase.Promise<!firebase.auth.UserCredential>}
+ */
+firebase.auth.Auth.prototype.signInAndRetrieveDataWithCredential =
+    function(credential) {};
 
 
 /**
@@ -913,6 +1159,94 @@ firebase.auth.Auth.prototype.signInWithEmailAndPassword =
 
 
 /**
+ * Asynchronously signs in using a phone number. This method sends a code via
+ * SMS to the given phone number, and returns a
+ * {@link firebase.auth.ConfirmationResult}. After the user provides the code
+ * sent to their phone, call {@link firebase.auth.ConfirmationResult#confirm}
+ * with the code to sign the user in.
+ *
+ * For abuse prevention, this method also requires a
+ * {@link firebase.auth.ApplicationVerifier}. The Firebase Auth SDK includes
+ * a reCAPTCHA-based implementation, {@link firebase.auth.RecaptchaVerifier}.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/captcha-check-failed</dt>
+ * <dd>Thrown if the reCAPTCHA response token was invalid, expired, or if
+ *     this method was called from a non-whitelisted domain.</dd>
+ * <dt>auth/invalid-phone-number</dt>
+ * <dd>Thrown if the phone number has an invalid format.</dd>
+ * <dt>auth/missing-phone-number</dt>
+ * <dd>Thrown if the phone number is missing.</dd>
+ * <dt>auth/quota-exceeded</dt>
+ * <dd>Thrown if the SMS quota for the Firebase project has been exceeded.</dd>
+ * <dt>auth/user-disabled</dt>
+ * <dd>Thrown if the user corresponding to the given phone number has been
+ *     disabled.</dd>
+ * <dt>auth/operation-not-allowed</dt>
+ * <dd>Thrown if you have not enabled the provider in the Firebase Console. Go
+ *     to the Firebase Console for your project, in the Auth section and the
+ *     <strong>Sign in Method</strong> tab and configure the provider.</dd>
+ * </dl>
+ *
+ * @example
+ * // 'recaptcha-container' is the ID of an element in the DOM.
+ * var applicationVerifier = new firebase.auth.RecaptchaVerifier(
+ *     'recaptcha-container');
+ * firebase.auth().signInWithPhoneNumber(phoneNumber, applicationVerifier)
+ *     .then(function(confirmationResult) {
+ *       var verificationCode = window.prompt('Please enter the verification ' +
+ *           'code that was sent to your mobile device.');
+ *       return confirmationResult.confirm(verificationCode);
+ *     })
+ *     .catch(function(error) {
+ *       // Handle Errors here.
+ *     });
+ *
+ * @param {string} phoneNumber The user's phone number in E.164 format (e.g.
+ *     +16505550101).
+ * @param {!firebase.auth.ApplicationVerifier} applicationVerifier
+ * @return {!firebase.Promise<!firebase.auth.ConfirmationResult>}
+ */
+firebase.auth.Auth.prototype.signInWithPhoneNumber =
+    function(phoneNumber, applicationVerifier) {};
+
+
+/**
+ * A result from a phone number sign-in, link, or reauthenticate call.
+ * @interface
+ */
+firebase.auth.ConfirmationResult;
+
+
+/**
+ * The phone number authentication operation's verification ID. This can be used
+ * along with the verification code to initialize a phone auth credential.
+ *
+ * @type {string}
+ */
+firebase.auth.ConfirmationResult.prototype.verificationId;
+
+
+/**
+ * Finishes a phone number sign-in, link, or reauthentication, given the code
+ * that was sent to the user's mobile device.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/invalid-verification-code</dt>
+ * <dd>Thrown if the verification code is not valid.</dd>
+ * <dt>auth/missing-verification-code</dt>
+ * <dd>Thrown if the verification code is missing.</dd>
+ * </dl>
+ * @param {string} verificationCode
+ * @return {!firebase.Promise<!firebase.auth.UserCredential>}
+ */
+firebase.auth.ConfirmationResult.prototype.confirm =
+    function(verificationCode) {};
+
+
+/**
  * Asynchronously signs in as an anonymous user.
  *
  * If there is already an anonymous user signed in, that user will be returned;
@@ -944,17 +1278,32 @@ firebase.auth.Auth.prototype.signInAnonymously = function() {};
 
 
 /**
- * A structure containing a User, an AuthCredential and the operationType.
+ * A structure containing a User, an AuthCredential, the operationType, and
+ * any additional user information that was returned from the identity provider.
  * operationType could be 'signIn' for a sign-in operation, 'link' for a linking
  * operation and 'reauthenticate' for a reauthentication operation.
  *
  * @typedef {{
  *   user: ?firebase.User,
  *   credential: ?firebase.auth.AuthCredential,
- *   operationType: (?string|undefined)
+ *   operationType: (?string|undefined),
+ *   additionalUserInfo: (?firebase.auth.AdditionalUserInfo|undefined)
  * }}
  */
 firebase.auth.UserCredential;
+
+
+/**
+ * A structure containing additional user information from a federated identity
+ * provider.
+ * @typedef {{
+ *   providerId: string,
+ *   profile: ?Object,
+ *   username: (?string|undefined)
+ * }}
+ */
+firebase.auth.AdditionalUserInfo;
+
 
 /**
  * Signs out the current user.
@@ -1001,8 +1350,8 @@ firebase.auth.Auth.prototype.signOut = function() {};
  *     <strong>Sign in Method</strong> tab and configure the provider.</dd>
  * <dt>auth/requires-recent-login</dt>
  * <dd>Thrown if the user's last sign-in time does not meet the security
- *     threshold. Use {@link firebase.User#reauthenticate} to resolve. This does
- *     not apply if the user is anonymous.</dd>
+ *     threshold. Use {@link firebase.User#reauthenticateWithCredential} to
+ *     resolve. This does not apply if the user is anonymous.</dd>
  * <dt>auth/too-many-requests</dt>
  * <dd>Thrown if requests are blocked from a device due to unusual activity.
  *     Trying again after some delay would unblock.</dd>
@@ -1056,6 +1405,7 @@ firebase.auth.AuthProvider = function() {};
 
 /** @type {string} */
 firebase.auth.AuthProvider.prototype.providerId;
+
 
 /**
  * Facebook auth provider.
@@ -1112,6 +1462,7 @@ firebase.auth.FacebookAuthProvider.prototype.providerId;
 
 /**
  * @param {string} scope Facebook OAuth scope.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.FacebookAuthProvider.prototype.addScope = function(scope) {};
 
@@ -1126,6 +1477,7 @@ firebase.auth.FacebookAuthProvider.prototype.addScope = function(scope) {};
  * 'scope', 'response_type' and 'state' are not allowed and will be ignored.
  * @param {!Object} customOAuthParameters The custom OAuth parameters to pass
  *     in the OAuth request.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.FacebookAuthProvider.prototype.setCustomParameters =
     function(customOAuthParameters) {};
@@ -1218,6 +1570,7 @@ firebase.auth.GithubAuthProvider.prototype.providerId;
 
 /**
  * @param {string} scope Github OAuth scope.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.GithubAuthProvider.prototype.addScope = function(scope) {};
 
@@ -1231,6 +1584,7 @@ firebase.auth.GithubAuthProvider.prototype.addScope = function(scope) {};
  * 'scope', 'response_type' and 'state' are not allowed and will be ignored.
  * @param {!Object} customOAuthParameters The custom OAuth parameters to pass
  *     in the OAuth request.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.GithubAuthProvider.prototype.setCustomParameters =
     function(customOAuthParameters) {};
@@ -1298,6 +1652,7 @@ firebase.auth.GoogleAuthProvider.prototype.providerId;
 
 /**
  * @param {string} scope Google OAuth scope.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.GoogleAuthProvider.prototype.addScope = function(scope) {};
 
@@ -1313,6 +1668,7 @@ firebase.auth.GoogleAuthProvider.prototype.addScope = function(scope) {};
  * 'scope', 'response_type' and 'state' are not allowed and will be ignored.
  * @param {!Object} customOAuthParameters The custom OAuth parameters to pass
  *     in the OAuth request.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.GoogleAuthProvider.prototype.setCustomParameters =
     function(customOAuthParameters) {};
@@ -1375,6 +1731,7 @@ firebase.auth.TwitterAuthProvider.prototype.providerId;
  * 'oauth_token', 'oauth_signature', etc are not allowed and will be ignored.
  * @param {!Object} customOAuthParameters The custom OAuth parameters to pass
  *     in the OAuth request.
+ * @return {!firebase.auth.AuthProvider} The provider instance itself.
  */
 firebase.auth.TwitterAuthProvider.prototype.setCustomParameters =
     function(customOAuthParameters) {};
@@ -1409,3 +1766,113 @@ firebase.auth.EmailAuthProvider.credential = function(email, password) {};
 
 /** @type {string} */
 firebase.auth.EmailAuthProvider.prototype.providerId;
+
+
+
+/**
+ * Phone number auth provider.
+ *
+ * @example
+ * // 'recaptcha-container' is the ID of an element in the DOM.
+ * var applicationVerifier = new firebase.auth.RecaptchaVerifier(
+ *     'recaptcha-container');
+ * var provider = new firebase.auth.PhoneAuthProvider();
+ * provider.verifyPhoneNumber('+16505550101', applicationVerifier)
+ *     .then(function(verificationId) {
+ *       var verificationCode = window.prompt('Please enter the verification ' +
+ *           'code that was sent to your mobile device.');
+ *       return firebase.auth.PhoneAuthProvider.credential(verificationId,
+ *           verificationCode);
+ *     })
+ *     .then(function(phoneCredential) {
+ *       return firebase.auth().signInWithCredential(phoneCredential);
+ *     });
+ *
+ * @constructor
+ * @param {?firebase.auth.Auth=} auth The Firebase Auth instance in which
+ *     sign-ins should occur. Uses the default Auth instance if unspecified.
+ * @implements {firebase.auth.AuthProvider}
+ */
+firebase.auth.PhoneAuthProvider = function(auth) {};
+
+/** @type {string} */
+firebase.auth.PhoneAuthProvider.PROVIDER_ID;
+
+/**
+ * Creates a phone auth credential, given the verification ID from
+ * {@link firebase.auth.PhoneAuthProvider#verifyPhoneNumber} and the code
+ * that was sent to the user's mobile device.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/missing-verification-code</dt>
+ * <dd>Thrown if the verification code is missing.</dd>
+ * <dt>auth/missing-verification-id</dt>
+ * <dd>Thrown if the verification ID is missing.</dd>
+ * </dl>
+ *
+ * @param {string} verificationId The verification ID returned from
+ *     {@link firebase.auth.PhoneAuthProvider#verifyPhoneNumber}.
+ * @param {string} verificationCode The verification code sent to the user's
+ *     mobile device.
+ * @return {!firebase.Promise<!firebase.auth.AuthCredential>}
+ */
+firebase.auth.PhoneAuthProvider.credential =
+    function(verificationId, verificationCode) {};
+
+/** @type {string} */
+firebase.auth.PhoneAuthProvider.prototype.providerId;
+
+/**
+ * Starts a phone number authentication flow by sending a verification code to
+ * the given phone number. Returns an ID that can be passed to
+ * {@link firebase.auth.PhoneAuthProvider#credential} to identify this flow.
+ *
+ * For abuse prevention, this method also requires a
+ * {@link firebase.auth.ApplicationVerifier}. The Firebase Auth SDK includes
+ * a reCAPTCHA-based implementation, {@link firebase.auth.RecaptchaVerifier}.
+ *
+ * <h4>Error Codes</h4>
+ * <dl>
+ * <dt>auth/captcha-check-failed</dt>
+ * <dd>Thrown if the reCAPTCHA response token was invalid, expired, or if
+ *     this method was called from a non-whitelisted domain.</dd>
+ * <dt>auth/invalid-phone-number</dt>
+ * <dd>Thrown if the phone number has an invalid format.</dd>
+ * <dt>auth/missing-phone-number</dt>
+ * <dd>Thrown if the phone number is missing.</dd>
+ * <dt>auth/quota-exceeded</dt>
+ * <dd>Thrown if the SMS quota for the Firebase project has been exceeded.</dd>
+ * <dt>auth/user-disabled</dt>
+ * <dd>Thrown if the user corresponding to the given phone number has been
+ *     disabled.</dd>
+ * </dl>
+ *
+ * @param {string} phoneNumber The user's phone number in E.164 format (e.g.
+ *     +16505550101).
+ * @param {!firebase.auth.ApplicationVerifier} applicationVerifier
+ * @return {!firebase.Promise<string>} A Promise for the verification ID.
+ */
+firebase.auth.PhoneAuthProvider.prototype.verifyPhoneNumber =
+    function(phoneNumber, applicationVerifier) {};
+
+
+/**
+ * A verifier for domain verification and abuse prevention. Currently, the
+ * only implementation is {@link firebase.auth.RecaptchaVerifier}.
+ * @interface
+ */
+firebase.auth.ApplicationVerifier = function() {};
+
+/**
+ * Identifies the type of application verifier (e.g. "recaptcha").
+ * @type {string}
+ */
+firebase.auth.ApplicationVerifier.prototype.type;
+
+/**
+ * Executes the verification process.
+ * @return {!firebase.Promise<string>} A Promise for a token that can be used to
+ *     assert the validity of a request.
+ */
+firebase.auth.ApplicationVerifier.prototype.verify = function() {};
