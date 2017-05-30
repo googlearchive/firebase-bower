@@ -1,5 +1,5 @@
-/*! @license Firebase v4.0.0
-Build: rev-c054dab
+/*! @license Firebase v4.1.0
+Build: rev-d3e3a6f
 Terms: https://firebase.google.com/terms/
 
 ---

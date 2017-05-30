@@ -1,5 +1,5 @@
-/*! @license Firebase v4.0.0
-Build: rev-c054dab
+/*! @license Firebase v4.1.0
+Build: rev-d3e3a6f
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Auth API.
- * Version: 4.0.0
+ * Version: 4.1.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
