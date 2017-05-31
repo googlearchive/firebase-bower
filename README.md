@@ -11,3 +11,7 @@ pull requests. Please contact [Firebase support](https://firebase.google.com/sup
 for any bugs / feature suggestions on Firebase or the Bower module.
 
 LICENSE - Refer to: https://developers.google.com/terms
+
+For the actual source code of the firebase js client, visit:
+
+?
