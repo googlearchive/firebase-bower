@@ -1,0 +1,21 @@
+{
+  "name": "firebase",
+  "version": "2.1.2",
+  "homepage": "https://firebase.com",
+  "authors": [
+    "Firebase <operations@firebase.com>"
+  ],
+  "description": "Firebase Web Client",
+  "main": "firebase.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/firebase/firebase-bower.git"
+  },
+  "keywords": [
+    "Firebase",
+    "synchronization",
+    "real-time",
+    "websocket"
+  ],
+  "license": "MIT"
+}
