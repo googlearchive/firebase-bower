@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.1
-Build: rev-ca0d1df
+/*! @license Firebase v4.1.2
+Build: rev-4a4cc92
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Storage API.
- * Version: 4.1.1
+ * Version: 4.1.2
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
