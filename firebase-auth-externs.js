@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.2
-Build: rev-4a4cc92
+/*! @license Firebase v4.1.3
+Build: rev-1234895
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Auth API.
- * Version: 4.1.2
+ * Version: 4.1.3
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -1815,7 +1815,7 @@ firebase.auth.PhoneAuthProvider.PROVIDER_ID;
  *     {@link firebase.auth.PhoneAuthProvider#verifyPhoneNumber}.
  * @param {string} verificationCode The verification code sent to the user's
  *     mobile device.
- * @return {!firebase.Promise<!firebase.auth.AuthCredential>}
+ * @return {!firebase.auth.AuthCredential} The auth provider credential.
  */
 firebase.auth.PhoneAuthProvider.credential =
     function(verificationId, verificationCode) {};

@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.2
-Build: rev-4a4cc92
+/*! @license Firebase v4.1.3
+Build: rev-1234895
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 4.1.2
+ * Version: 4.1.3
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -237,6 +237,7 @@ firebase.Promise = function(resolver) {};
  * @param {(function(!Error): *)=} onReject Called when the Promise is rejected
  *   (with an error).
  * @return {!firebase.Promise<*>}
+ * @override
  */
 firebase.Promise.prototype.then = function(onResolve, onReject) {};
 
@@ -245,6 +246,7 @@ firebase.Promise.prototype.then = function(onResolve, onReject) {};
  *
  * @param {(function(!Error): *)=} onReject Called when the Promise is rejected
  *   (with an error).
+ * @override
  */
 firebase.Promise.prototype.catch = function(onReject) {};
 
