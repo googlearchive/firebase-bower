@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.3
-Build: rev-1234895
+/*! @license Firebase v4.1.4
+Build: rev-eb1a6fc
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 4.1.3
+ * Version: 4.1.4
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -279,3 +279,27 @@ firebase.Promise.reject = function(error) {};
  * @return {!firebase.Promise<!Array<*>>}
  */
 firebase.Promise.all = function(values) {};
+
+/**
+ * @template V, E
+ * @interface
+ **/
+firebase.Observer = function() {};
+
+/**
+ * @param {?V} value
+ */
+firebase.Observer.prototype.next = function(value) {};
+
+/**
+ * @param {!E} error
+ */
+firebase.Observer.prototype.error = function(error) {};
+
+firebase.Observer.prototype.complete = function() {};
+
+/** @typedef {function(): void} */
+firebase.CompleteFn;
+
+/** @typedef {function(): void} */
+firebase.Unsubscribe;

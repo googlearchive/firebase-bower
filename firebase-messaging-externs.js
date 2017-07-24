@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.3
-Build: rev-1234895
+/*! @license Firebase v4.1.4
+Build: rev-eb1a6fc
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Messaging API.
- * Version: 4.1.3
+ * Version: 4.1.4
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -123,10 +123,10 @@ firebase.messaging.Messaging.prototype.getToken = function() {};
  * has invalidated your existing token and you need to call `getToken()`
  * to get a new token.
  *
- * @param {(!function(!Object)|!Object)} nextOrObserver This function, or
- *     observer object with `next` defined, is called when a token refresh
- *     has occurred.
- * @return {function()} To stop listening for token
+ * @param {!firebase.Observer<Object, void>|!function(!Object)}
+ *     nextOrObserver This function, or observer object with `next` defined,
+ *     is called when a token refresh has occurred.
+ * @return {firebase.Unsubscribe} To stop listening for token
  *   refresh events execute this returned function.
  */
 firebase.messaging.Messaging.prototype.onTokenRefresh =
@@ -140,10 +140,10 @@ firebase.messaging.Messaging.prototype.onTokenRefresh =
  * NOTE: These events are dispatched when you have called
  * `setBackgroundMessageHandler()` in your service worker.
  *
- * @param {(!function(!Object)|!Object)} nextOrObserver This function, or
- *     observer object with `next` defined, is called when a message is
- *     received and the user is currently viewing your page.
- * @return {function()} To stop listening for messages
+ * @param {!firebase.Observer<Object, void>|!function(!Object)}
+ *     nextOrObserver This function, or observer object with `next` defined,
+ *     is called when a message is received and the user is currently viewing your page.
+ * @return {firebase.Unsubscribe} To stop listening for messages
  *    execute this returned function.
  */
 firebase.messaging.Messaging.prototype.onMessage =

@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.3
-Build: rev-1234895
+/*! @license Firebase v4.1.4
+Build: rev-eb1a6fc
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Storage API.
- * Version: 4.1.3
+ * Version: 4.1.4
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -587,18 +587,19 @@ firebase.storage.UploadTask.prototype.catch = function(onRejected) {};
  * });
  *
  * @param {!firebase.storage.TaskEvent} event The event to listen for.
- * @param {(?function(!Object)|!Object)=} nextOrObserver The `next` function,
- *     which gets called for each item in the event stream, or an observer
- *     object with some or all of these three properties (`next`, `error`,
- *     `complete`).
+ * @param {(?firebase.Observer<firebase.storage.UploadTaskSnapshot,Error>|
+ *       ?function(!Object))=} nextOrObserver
+ *     The `next` function, which gets called for each item in
+ *     the event stream, or an observer object with some or all of these three
+ *     properties (`next`, `error`, `complete`).
  * @param {?function(!Error)=} error A function that gets called with an Error
  *     if the event stream ends due to an error.
- * @param {?function()=} complete A function that gets called if the
+ * @param {?firebase.CompleteFn=} complete A function that gets called if the
  *     event stream ends normally.
  * @return {
- *     !function()|
- *     !function(?function(!Object),?function(!Error)=,?function()=)
- *       :!function()}
+ *     !firebase.Unsubscribe|
+ *     !function(?function(!Object),?function(!Error)=,?firebase.CompleteFn=)
+ *       :!firebase.Unsubscribe}
  *     If only the event argument is passed, returns a function you can use to
  *     add callbacks (see the examples above). If more than just the event
  *     argument is passed, returns a function you can call to unregister the

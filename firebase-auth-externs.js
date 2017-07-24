@@ -1,5 +1,5 @@
-/*! @license Firebase v4.1.3
-Build: rev-1234895
+/*! @license Firebase v4.1.4
+Build: rev-eb1a6fc
 Terms: https://firebase.google.com/terms/ */
 
 /**
@@ -19,7 +19,7 @@ Terms: https://firebase.google.com/terms/ */
 */
 /**
  * @fileoverview Firebase Auth API.
- * Version: 4.1.3
+ * Version: 4.1.4
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -874,13 +874,13 @@ firebase.auth.Auth.prototype.fetchProvidersForEmail = function(email) {};
  *   }
  * });
  *
- * @param {!Object|function(?firebase.User)}
+ * @param {!firebase.Observer<firebase.User, firebase.auth.Error>|function(?firebase.User)}
  *     nextOrObserver An observer object or a function triggered on change.
  * @param {function(!firebase.auth.Error)=} error Optional A function
  *     triggered on auth error.
- * @param {function()=} completed Optional A function triggered when the
+ * @param {firebase.CompleteFn=} completed Optional A function triggered when the
  *     observer is removed.
- * @return {!function()} The unsubscribe function for the observer.
+ * @return {!firebase.Unsubscribe} The unsubscribe function for the observer.
  */
 firebase.auth.Auth.prototype.onAuthStateChanged = function(
     nextOrObserver, error, completed) {};
@@ -898,13 +898,13 @@ firebase.auth.Auth.prototype.onAuthStateChanged = function(
  *   }
  * });
  *
- * @param {!Object|function(?firebase.User)}
+ * @param {!firebase.Observer<firebase.User, firebase.auth.Error>|function(?firebase.User)}
  *     nextOrObserver An observer object or a function triggered on change.
  * @param {function(!firebase.auth.Error)=} error Optional A function
  *     triggered on auth error.
- * @param {function()=} completed Optional A function triggered when the
+ * @param {firebase.CompleteFn=} completed Optional A function triggered when the
  *     observer is removed.
- * @return {!function()} The unsubscribe function for the observer.
+ * @return {!firebase.Unsubscribe} The unsubscribe function for the observer.
  */
 firebase.auth.Auth.prototype.onIdTokenChanged = function(
     nextOrObserver, error, completed) {};
