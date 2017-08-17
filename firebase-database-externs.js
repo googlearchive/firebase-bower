@@ -1,5 +1,5 @@
-/*! @license Firebase v4.2.0
-Build: rev-d6b2db4
+/*! @license Firebase v4.3.0
+Build: rev-bd8265e
 Terms: https://firebase.google.com/terms/
 
 ---
@@ -42,7 +42,7 @@ THE SOFTWARE. */
 */
 /**
  * @fileoverview Firebase Database API.
- * Version: 4.2.0
+ * Version: 4.3.0
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
