@@ -1,7 +1,3 @@
-/*! @license Firebase v4.5.0
-Build: rev-f49c8b5
-Terms: https://firebase.google.com/terms/ */
-
 /**
  * Copyright 2017 Google Inc.
  *
@@ -19,7 +15,7 @@ Terms: https://firebase.google.com/terms/ */
  */
 /**
  * @fileoverview Firebase namespace and Firebase App API.
- * Version: 4.5.0
+ * Version: ${JSCORE_VERSION}
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *

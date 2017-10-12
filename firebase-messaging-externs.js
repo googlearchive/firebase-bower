@@ -1,7 +1,3 @@
-/*! @license Firebase v4.5.0
-Build: rev-f49c8b5
-Terms: https://firebase.google.com/terms/ */
-
 /**
  * Copyright 2017 Google Inc.
  *
@@ -19,7 +15,7 @@ Terms: https://firebase.google.com/terms/ */
  */
 /**
  * @fileoverview Firebase Messaging API.
- * Version: 4.5.0
+ * Version: ${JSCORE_VERSION}
  *
  * Copyright 2017 Google Inc. All Rights Reserved.
  *
@@ -37,7 +33,6 @@ Terms: https://firebase.google.com/terms/ */
  *
  * @externs
  */
-
 
 /**
  * Gets the {@link firebase.messaging.Messaging `Messaging`} service for the
@@ -129,8 +124,9 @@ firebase.messaging.Messaging.prototype.getToken = function() {};
  * @return {firebase.Unsubscribe} To stop listening for token
  *   refresh events execute this returned function.
  */
-firebase.messaging.Messaging.prototype.onTokenRefresh =
-  function(nextOrObserver) {};
+firebase.messaging.Messaging.prototype.onTokenRefresh = function(
+  nextOrObserver
+) {};
 
 /**
  * When a push message is received and the user is currently on a page
@@ -146,8 +142,7 @@ firebase.messaging.Messaging.prototype.onTokenRefresh =
  * @return {firebase.Unsubscribe} To stop listening for messages
  *    execute this returned function.
  */
-firebase.messaging.Messaging.prototype.onMessage =
-  function(nextOrObserver) {};
+firebase.messaging.Messaging.prototype.onMessage = function(nextOrObserver) {};
 
 /**
  * To forceably stop a registration token from being used, delete it
@@ -166,8 +161,9 @@ firebase.messaging.Messaging.prototype.deleteToken = function(token) {};
  * @param {!ServiceWorkerRegistration} registration The service worker
  *   registration you wish to use for push messaging.
  */
-firebase.messaging.Messaging.prototype.useServiceWorker =
-  function(registration) {};
+firebase.messaging.Messaging.prototype.useServiceWorker = function(
+  registration
+) {};
 
 /**
  * FCM directs push messages to your web page's `onMessage()` callback
@@ -179,5 +175,6 @@ firebase.messaging.Messaging.prototype.useServiceWorker =
  *
  * @param {!function(!Object)} callback The function to handle the push message.
  */
-firebase.messaging.Messaging.prototype.setBackgroundMessageHandler =
-  function(callback) {};
+firebase.messaging.Messaging.prototype.setBackgroundMessageHandler = function(
+  callback
+) {};
