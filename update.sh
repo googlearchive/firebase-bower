@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ev
 
-curl -o releases.json https://www.gstatic.com/firebasejs/staging/releases.json
+curl -o releases.json https://www.gstatic.com/firebasejs/releases.json
 
 VERSION=$(node -p "require('./releases.json').current.version")
 
