@@ -39,7 +39,7 @@ get-from-gstatic "firebase.js.map"
 
 echo "|----- Bumping version number of bower.json to $VERSION... -----|"
 
-echo "$(node -p "JSON.stringify(Object.assign(require('./bower.json'), { version: '4.8.2' }), null, 2)")" > bower.json
+echo "$(node -p "JSON.stringify(Object.assign(require('./bower.json'), { version: '$VERSION' }), null, 2)")" > bower.json
 
 if [[ $? -ne 0 ]]; then
   echo "!!!!! Error: Failed to bump version number of bower.json to $VERSION. !!!!!"
