@@ -17,8 +17,8 @@ get-from-gstatic() {
 }
 
 SDK_FILES="firebase.js index.d.ts"
-SERVICES="app auth database storage messaging firestore"
-MAPS="app database storage messaging firestore"
+SERVICES="app auth database storage messaging firestore functions"
+MAPS="app database storage messaging firestore functions"
 
 for file in $SDK_FILES; do
   get-from-gstatic $file
@@ -28,7 +28,7 @@ mv index.d.ts firebase.d.ts
 
 for service in $SERVICES; do
   get-from-gstatic "firebase-$service.js"
-  [ $service != "firestore" ] && get-from-gstatic "firebase-$service-externs.js"
+  [ $service != "firestore" ] && [ $service != "functions" ] && get-from-gstatic "firebase-$service-externs.js"
 done
 
 for map in $MAPS; do
