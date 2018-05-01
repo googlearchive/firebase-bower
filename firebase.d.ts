@@ -36,6 +36,9 @@ declare namespace firebase {
   interface User extends firebase.UserInfo {
     delete(): Promise<any>;
     emailVerified: boolean;
+    getIdTokenResult(
+      forceRefresh?: boolean
+    ): Promise<firebase.auth.IdTokenResult>;
     getIdToken(forceRefresh?: boolean): Promise<any>;
     getToken(forceRefresh?: boolean): Promise<any>;
     isAnonymous: boolean;
@@ -296,6 +299,17 @@ declare namespace firebase.auth {
     ): firebase.auth.AuthProvider;
   }
 
+  interface IdTokenResult {
+    token: string;
+    expirationTime: string;
+    authTime: string;
+    issuedAtTime: string;
+    signInProvider: string | null;
+    claims: {
+      [key: string]: any;
+    };
+  }
+
   class PhoneAuthProvider extends PhoneAuthProvider_Instance {
     static PROVIDER_ID: string;
     static PHONE_SIGN_IN_METHOD: string;
@@ -510,6 +524,11 @@ declare namespace firebase.messaging {
 declare namespace firebase.storage {
   interface FullMetadata extends firebase.storage.UploadMetadata {
     bucket: string;
+    /**
+     * @deprecated
+     * Use Reference.getDownloadURL instead. This property will be removed in a
+     * future release.
+     */
     downloadURLs: string[];
     fullPath: string;
     generation: string;
@@ -614,6 +633,11 @@ declare namespace firebase.storage {
 
   interface UploadTaskSnapshot {
     bytesTransferred: number;
+    /**
+     * @deprecated
+     * Use Reference.getDownloadURL instead. This property will be removed in a
+     * future release.
+     */
     downloadURL: string | null;
     metadata: firebase.storage.FullMetadata;
     ref: firebase.storage.Reference;
@@ -643,6 +667,26 @@ declare namespace firebase.firestore {
     host?: string;
     /** Whether to use SSL when connecting. */
     ssl?: boolean;
+
+    /**
+     * Enables the use of `Timestamp`s for timestamp fields in
+     * `DocumentSnapshot`s.
+     *
+     * Currently, Firestore returns timestamp fields as `Date` but `Date` only
+     * supports millisecond precision, which leads to truncation and causes
+     * unexpected behavior when using a timestamp from a snapshot as a part
+     * of a subsequent query.
+     *
+     * Setting `timestampsInSnapshots` to true will cause Firestore to return
+     * `Timestamp` values instead of `Date` avoiding this kind of problem. To make
+     * this work you must also change any code that uses `Date` to use `Timestamp`
+     * instead.
+     *
+     * NOTE: in the future `timestampsInSnapshots: true` will become the
+     * default and this option will be removed so you should change your code to
+     * use Timestamp now and opt-in to this new behavior as soon as you can.
+     */
+    timestampsInSnapshots?: boolean;
   }
 
   export type LogLevel = 'debug' | 'error' | 'silent';
@@ -778,6 +822,86 @@ declare namespace firebase.firestore {
      * @return true if this `GeoPoint` is equal to the provided one.
      */
     isEqual(other: GeoPoint): boolean;
+  }
+
+  /**
+   * A Timestamp represents a point in time independent of any time zone or
+   * calendar, represented as seconds and fractions of seconds at nanosecond
+   * resolution in UTC Epoch time. It is encoded using the Proleptic Gregorian
+   * Calendar which extends the Gregorian calendar backwards to year one. It is
+   * encoded assuming all minutes are 60 seconds long, i.e. leap seconds are
+   * "smeared" so that no leap second table is needed for interpretation. Range is
+   * from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z.
+   *
+   * @see https://github.com/google/protobuf/blob/master/src/google/protobuf/timestamp.proto
+   */
+  export class Timestamp {
+    /**
+     * Creates a new timestamp with the current date, with millisecond precision.
+     *
+     * @return a new timestamp representing the current date.
+     */
+    static now(): Timestamp;
+
+    /**
+     * Creates a new timestamp from the given date.
+     *
+     * @param date The date to initialize the `Timestamp` from.
+     * @return A new `Timestamp` representing the same point in time as the given
+     *     date.
+     */
+    static fromDate(date: Date): Timestamp;
+
+    /**
+     * Creates a new timestamp from the given number of milliseconds.
+     *
+     * @param milliseconds Number of milliseconds since Unix epoch
+     *     1970-01-01T00:00:00Z.
+     * @return A new `Timestamp` representing the same point in time as the given
+     *     number of milliseconds.
+     */
+    static fromMillis(milliseconds: number): Timestamp;
+
+    /**
+     * Creates a new timestamp.
+     *
+     * @param seconds The number of seconds of UTC time since Unix epoch
+     *     1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
+     *     9999-12-31T23:59:59Z inclusive.
+     * @param nanoseconds The non-negative fractions of a second at nanosecond
+     *     resolution. Negative second values with fractions must still have
+     *     non-negative nanoseconds values that count forward in time. Must be
+     *     from 0 to 999,999,999 inclusive.
+     */
+    constructor(seconds: number, nanoseconds: number);
+
+    readonly seconds: number;
+    readonly nanoseconds: number;
+
+    /**
+     * Returns a new `Date` corresponding to this timestamp. This may lose
+     * precision.
+     *
+     * @return JavaScript `Date` object representing the same point in time as
+     *     this `Timestamp`, with millisecond precision.
+     */
+    toDate(): Date;
+
+    /**
+     * Returns the number of milliseconds since Unix epoch 1970-01-01T00:00:00Z.
+     *
+     * @return The point in time corresponding to this timestamp, represented as
+     *     the number of milliseconds since Unix epoch 1970-01-01T00:00:00Z.
+     */
+    toMillis(): number;
+
+    /**
+     * Returns true if this `Timestamp` is equal to the provided one.
+     *
+     * @param other The `Timestamp` to compare against.
+     * @return true if this `Timestamp` is equal to the provided one.
+     */
+    isEqual(other: Timestamp): boolean;
   }
 
   /**
@@ -1003,6 +1127,37 @@ declare namespace firebase.firestore {
   }
 
   /**
+   * An options object that configures the behavior of `get()` calls on
+   * `DocumentReference` and `Query`. By providing a `GetOptions` object, these
+   * methods can be configured to fetch results only from the server, only from
+   * the local cache or attempt to fetch results from the server and fall back to
+   * the cache (which is the default).
+   */
+  export interface GetOptions {
+    /**
+     * Describes whether we should get from server or cache.
+     *
+     * Setting to 'default' (or not setting at all), causes Firestore to try to
+     * retrieve an up-to-date (server-retrieved) snapshot, but fall back to
+     * returning cached data if the server can't be reached.
+     *
+     * Setting to 'server' causes Firestore to avoid the cache, generating an
+     * error if the server cannot be reached. Note that the cache will still be
+     * updated if the server request succeeds. Also note that latency-compensation
+     * still takes effect, so any pending write operations will be visible in the
+     * returned data (merged into the server-provided data).
+     *
+     * Setting to 'cache' causes Firestore to immediately return a value from the
+     * cache, ignoring the server completely (implying that the returned value
+     * may be stale with respect to the value on the server.) If there is no data
+     * in the cache to satisfy the `get()` call, `DocumentReference.get()` will
+     * return an error and `QuerySnapshot.get()` will return an empty
+     * `QuerySnapshot` with no documents.
+     */
+    readonly source?: 'default' | 'server' | 'cache';
+  }
+
+  /**
    * A `DocumentReference` refers to a document location in a Firestore database
    * and can be used to write, read, or listen to the location. The document at
    * the referenced location may or may not exist. A `DocumentReference` can
@@ -1103,14 +1258,16 @@ declare namespace firebase.firestore {
     /**
      * Reads the document referred to by this `DocumentReference`.
      *
-     * Note: get() attempts to provide up-to-date data when possible by waiting
-     * for data from the server, but it may return cached data or fail if you
-     * are offline and the server cannot be reached.
+     * Note: By default, get() attempts to provide up-to-date data when possible
+     * by waiting for data from the server, but it may return cached data or fail
+     * if you are offline and the server cannot be reached. This behavior can be
+     * altered via the `GetOptions` parameter.
      *
+     * @param options An object to configure the get behavior.
      * @return A Promise resolved with a DocumentSnapshot containing the
      * current document contents.
      */
-    get(): Promise<DocumentSnapshot>;
+    get(options?: GetOptions): Promise<DocumentSnapshot>;
 
     /**
      * Attaches a listener for DocumentSnapshot events. You may either pass
@@ -1488,9 +1645,15 @@ declare namespace firebase.firestore {
     /**
      * Executes the query and returns the results as a QuerySnapshot.
      *
+     * Note: By default, get() attempts to provide up-to-date data when possible
+     * by waiting for data from the server, but it may return cached data or fail
+     * if you are offline and the server cannot be reached. This behavior can be
+     * altered via the `GetOptions` parameter.
+     *
+     * @param options An object to configure the get behavior.
      * @return A Promise that will be resolved with the results of the Query.
      */
-    get(): Promise<QuerySnapshot>;
+    get(options?: GetOptions): Promise<QuerySnapshot>;
 
     /**
      * Attaches a listener for QuerySnapshot events. You may either pass
@@ -1799,6 +1962,4 @@ declare namespace firebase.firestore {
   }
 }
 
-declare module 'firebase' {
-  export = firebase;
-}
+export = firebase;
