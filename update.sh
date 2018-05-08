@@ -35,8 +35,6 @@ for map in $MAPS; do
   get-from-gstatic "firebase-$map.js.map"
 done
 
-get-from-gstatic "firebase.js.map"
-
 echo "|----- Bumping version number of bower.json to $VERSION... -----|"
 
 echo "$(node -p "JSON.stringify(Object.assign(require('./bower.json'), { version: '$VERSION' }), null, 2)")" > bower.json
